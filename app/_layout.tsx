@@ -1,29 +1,39 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { ApolloProvider } from "@apollo/client/react";
+import { Stack } from "expo-router";
+import {apollo, getTokens} from "../lib/apollo";
+import { NativeBaseProvider } from "native-base"; // ← CORRECT IMPORT
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SocketProvider } from "@/providers/SocketProvider";
+import {useEffect, useState} from "react";
 
-import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
+    const [token, setToken] = useState<string | null>(null);
+    const [tokenLoading, setTokenLoading] = useState(true);
+    useEffect(() => {
+        let mounted = true;
+        (async () => {
+            try {
+                const { accessToken } = await getTokens();
+                if (!mounted) return;
+                setToken(accessToken ?? null);
+            } finally {
+                if (mounted) setTokenLoading(false);
+            }
+        })();
+        return () => { mounted = false; };
+    }, []);
+    return (
+        <SafeAreaProvider>
 
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
-  }
+        <NativeBaseProvider>
+            { token &&  <SocketProvider token={token}>
+                <ApolloProvider client={apollo}>
+                    <Stack screenOptions={{ headerShown: false }} />
+                </ApolloProvider>
+            </SocketProvider>}
+        </NativeBaseProvider>
 
-  return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+        </SafeAreaProvider>
   );
 }
