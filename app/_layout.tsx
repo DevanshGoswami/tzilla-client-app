@@ -5,6 +5,8 @@ import { NativeBaseProvider } from "native-base"; // ← CORRECT IMPORT
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { SocketProvider } from "@/providers/SocketProvider";
 import {useEffect, useState} from "react";
+import { StatusBar } from "expo-status-bar";
+import PushRegistrar from "@/push/registerDevice";
 
 
 export default function RootLayout() {
@@ -24,16 +26,20 @@ export default function RootLayout() {
         return () => { mounted = false; };
     }, []);
     return (
-        <SafeAreaProvider>
+        <>
+            <StatusBar style="dark" />
+            <SafeAreaProvider>
 
         <NativeBaseProvider>
             { token &&  <SocketProvider token={token}>
                 <ApolloProvider client={apollo}>
+                    <PushRegistrar/>
                     <Stack screenOptions={{ headerShown: false }} />
                 </ApolloProvider>
             </SocketProvider>}
         </NativeBaseProvider>
 
         </SafeAreaProvider>
+            </>
   );
 }

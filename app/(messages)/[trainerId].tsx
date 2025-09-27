@@ -204,6 +204,7 @@ export default function ChatRoom() {
         }
     }, [emit, roomId, token]);
 
+    const [composerH, setComposerH] = useState(0);
     const bottomPad = Math.max(8, insets.bottom || 0);
 
 
@@ -281,7 +282,7 @@ export default function ChatRoom() {
                 <KeyboardAvoidingView
                   style={{ flex: 1 }}
                   behavior={Platform.OS === "ios" ? "padding" : "height"}
-                  keyboardVerticalOffset={Platform.OS === "ios" ? KEYBOARD_OFFSET : 0}
+                  keyboardVerticalOffset={Platform.OS === "ios" ? KEYBOARD_OFFSET : KEYBOARD_OFFSET - 60 }
                 >
                     <Box flex={1} bg="gray.50">
                         {/* Header */}
@@ -297,7 +298,7 @@ export default function ChatRoom() {
                                     data={rows}
                                     keyExtractor={(r) => r.id}
                                     renderItem={renderRow}
-                                    contentContainerStyle={styles.listContent}
+                                    contentContainerStyle={[styles.listContent, { paddingBottom: composerH + bottomPad }]}
                                     keyboardShouldPersistTaps="handled"
                                     onScroll={onScroll}
                                     onContentSizeChange={onContentSizeChange}
@@ -319,7 +320,10 @@ export default function ChatRoom() {
                                 )}
 
                                 {/* Composer */}
-                                <View style={[styles.composer, { paddingBottom: bottomPad }]}>
+                                <View
+                                   style={[styles.composer, { paddingBottom: bottomPad }]}
+                                   onLayout={(e) => setComposerH(e.nativeEvent.layout.height)}
+                                >
                                     <TouchableOpacity onPress={pickAndSendImage} style={styles.attachBtn} disabled={!token}>
                                         <Text style={{ color: "white" }}>＋</Text>
                                     </TouchableOpacity>

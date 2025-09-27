@@ -110,3 +110,9 @@ export const CANCEL_SESSION = gql`
     }
   }
 `;
+
+export const REGISTER_DEVICE_TOKEN = gql`
+  mutation RegisterDeviceToken($input: DeviceTokenInput!) {
+    registerDeviceToken(input: $input)
+  }
+`;

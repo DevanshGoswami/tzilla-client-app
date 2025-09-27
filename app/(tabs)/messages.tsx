@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, TouchableOpacity, StyleSheet, SafeAreaView, View } from "react-native";
-import { Box, Text, HStack, VStack, Avatar, Spinner, Center } from "native-base";
+import { FlatList, TouchableOpacity, StyleSheet, SafeAreaView, View, TextInput, Animated } from "react-native";
+import { Box, Text, HStack, VStack, Avatar, Spinner, Center, Pressable } from "native-base";
 import { useQuery } from "@apollo/client/react";
 import { GET_ME, GET_TRAINERS_FOR_CLIENT } from "@/graphql/queries";
 import { useSocket } from "@/providers/SocketProvider";
@@ -50,18 +50,62 @@ export default function ChatList() {
     const me = meData?.getMe ?? meData?.me ?? meData?.user;
     const userId: string | undefined = me?._id || me?.id || me?.userId;
 
-    const { data: trainersData, loading: trainersLoading, error: trainersError } = useQuery(
+    const { data: trainersData, loading: trainersLoading, error: trainersError, refetch: refetchTrainers } = useQuery(
         GET_TRAINERS_FOR_CLIENT,
         { variables: { pagination: { pageNumber: 1, pageSize: 50 } }, fetchPolicy: "cache-and-network", skip: !userId }
     );
     // @ts-ignore
     const trainers = (trainersData?.getTrainersForClient || []) as Array<{ _id: string; name: string; avatarUrl?: string }>;
 
+    type TabKey = "current" | "new";
+    const [tab, setTab] = useState<TabKey>("current");
+    const [trainerSearch, setTrainerSearch] = useState("");
+    const filteredTrainers = (trainers || []).filter(t =>
+        (t?.name || "").toLowerCase().includes(trainerSearch.toLowerCase())
+    );
+
+    function SegmentedTabs({
+                               value,
+                               onChange,
+                           }: {
+        value: TabKey;
+        onChange: (k: TabKey) => void;
+    }) {
+        return (
+            <HStack px={12} pt={12} pb={10} bg="white" borderBottomWidth={1} borderBottomColor="#eee">
+                <Box
+                    style={styles.tabsContainer}
+                    accessibilityRole="tablist"
+                >
+                    <Pressable accessibilityRole="tab" onPress={() => onChange("current")} style={[styles.tabBtn, value === "current" && styles.tabBtnActive]}>
+                        <Text style={[styles.tabText, value === "current" && styles.tabTextActive]}>Current Chats</Text>
+                    </Pressable>
+                    <Pressable accessibilityRole="tab" onPress={() => onChange("new")} style={[styles.tabBtn, value === "new" && styles.tabBtnActive]}>
+                        <Text style={[styles.tabText, value === "new" && styles.tabTextActive]}>New Chat</Text>
+                    </Pressable>
+                </Box>
+            </HStack>
+        );
+    }
+
+    // when we first get a userId (skip -> active), ensure trainers load
+    useEffect(() => {
+        if (userId) refetchTrainers?.();
+    }, [userId, refetchTrainers]);
+
+    // if user switches to "New Chat" and trainers list is empty, try refetch
+    useEffect(() => {
+        if (tab === "new" && userId && (!trainers || trainers.length === 0)) {
+            refetchTrainers?.();
+        }
+    }, [tab, userId, trainers, refetchTrainers]);
+
     // ---- socket presence & rooms ----
     const { socket, emit, presence } = useSocket() as any;
     const [rooms, setRooms] = useState<any[]>([]);
     const [roomsLoading, setRoomsLoading] = useState(false);
     const [roomsError, setRoomsError] = useState<string | null>(null);
+
 
     const refreshRooms = useCallback(async () => {
           if (!token) return;
@@ -176,6 +220,11 @@ export default function ChatList() {
 
     const emptyState = rooms.length === 0;
 
+    // if there are no rooms, show New Chat by default
+    useEffect(() => {
+        if (rooms && rooms.length === 0) setTab("new");
+    }, [rooms]);
+
     // ---- loading & error screens ----
     if (tokenLoading || meLoading || trainersLoading || roomsLoading) {
         return (
@@ -200,56 +249,167 @@ export default function ChatList() {
     }
 
     return (
-        <SafeAreaView style={{ flex: 1 }}>
-            {emptyState ? (
-                <FlatList
-                    data={trainers}
-                    keyExtractor={(t) => t._id}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity onPress={() => ensureDmAndOpen(item)} style={styles.row}>
-                      <Avatar source={item.avatarUrl ? { uri: item.avatarUrl } : undefined}>
-                        {item.name?.[0] || "T"}
-                      </Avatar>
-                      <VStack ml={12}>
-                        <Text fontWeight="bold">{item.name || "Trainer"}</Text>
-                        <Text fontSize="xs" color="coolGray.600">Tap to start chat</Text>
-                      </VStack>
-                    </TouchableOpacity>
-                    )}
-                    ListHeaderComponent={<Box p={12}><Text fontSize="md" fontWeight="bold">Start a chat with your trainer</Text></Box>}
-                />
-            ) : (
-                <FlatList
-                    data={rooms}
-                    keyExtractor={(r) => r._id}
-                    renderItem={({ item }) => {
-                        const peer = getPeerInfo(item, userId);
-                        const isOnline = !!presence?.[peer.id];
-                        const unread = item.unread?.[String(userId)] || 0;
-                        return (
-                            <TouchableOpacity onPress={() => openRoom(item)} style={styles.row}>
-                                <Avatar source={peer.avatarUrl ? { uri: peer.avatarUrl } : undefined}>{peer.initial}</Avatar>
-                                <VStack ml={12} flex={1}>
-                                    <HStack alignItems="center" justifyContent="space-between">
-                                        <Text fontWeight="bold">{peer.display}</Text>
-                                        <Box w={2} h={2} rounded="full" bg={isOnline ? "green.500" : "coolGray.400"} />
-                                    </HStack>
-                                    <Text color="coolGray.600" numberOfLines={1}>{item.lastMessageText || "…"}</Text>
-                                </VStack>
-                                {unread > 0 && (
-                                    <View style={styles.badge}><Text color="white" fontSize="xs">{unread}</Text></View>
-                                )}
-                            </TouchableOpacity>
-                        );
-                    }}
-                    ListHeaderComponent={<Box p={12}><Text fontSize="md" fontWeight="bold">Recent chats</Text></Box>}
-                />
-            )}
+
+         <SafeAreaView style={{ flex: 1, backgroundColor: "#f6f8fb" }}>
+            <SegmentedTabs value={tab} onChange={setTab} />
+
+            {/* content per tab */}
+           <View style={{ flex: 1 }}>
+               {tab === "current" ? (
+                   <FlatList
+                       style={{ flex: 1}}
+                       data={rooms}
+                       keyExtractor={(r) => r._id}
+                       ListEmptyComponent={
+                           <Center flex={1} py={20}>
+                               <Text color="coolGray.600">No recent chats yet.</Text>
+                               <Text mt={1} color="coolGray.500" fontSize="xs">Switch to “New Chat” to start one.</Text>
+                           </Center>
+                       }
+                       renderItem={({ item }) => {
+                           const peer = getPeerInfo(item, userId);
+                           const isOnline = !!presence?.[peer.id];
+                           const unread = item.unread?.[String(userId)] || 0;
+                           return (
+                               <TouchableOpacity onPress={() => openRoom(item)} style={styles.rowCard}>
+                                   <Avatar source={peer.avatarUrl ? { uri: peer.avatarUrl } : undefined}>{peer.initial}</Avatar>
+                                   <VStack ml={12} flex={1}>
+                                       <HStack alignItems="center" justifyContent="space-between">
+                                           <Text style={styles.title}>{peer.display}</Text>
+                                           <Box w={2} h={2} rounded="full" bg={isOnline ? "green.500" : "coolGray.400"} />
+                                       </HStack>
+                                       <Text style={styles.subtitle} numberOfLines={1}>{item.lastMessageText || "…"}</Text>
+                                   </VStack>
+                                   {unread > 0 && (
+                                       <View style={styles.badge}><Text style={styles.badgeText}>{unread}</Text></View>
+                                   )}
+                               </TouchableOpacity>
+                           );
+                       }}
+                       ListHeaderComponent={
+                           <Box p={12}>
+                               <Text style={styles.section}>Recent chats</Text>
+                           </Box>
+                       }
+                       contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20, flexGrow: 1 }}
+                   />
+               ) : (
+                   <>
+                       {/* search bar */}
+                       <Box px={12} pt={10} pb={6} bg="white" borderBottomWidth={1} borderBottomColor="#eee">
+                           <View style={styles.searchBox}>
+                               <TextInput
+                                   placeholder="Search trainers…"
+                                   placeholderTextColor="#94a3b8"
+                                   value={trainerSearch}
+                                   onChangeText={setTrainerSearch}
+                                   style={styles.searchInput}
+                                   returnKeyType="search"
+                               />
+                           </View>
+                       </Box>
+                       <FlatList
+                           style={{ flex: 1 }}
+                           data={filteredTrainers}
+                           keyExtractor={(t) => t._id}
+                           ListEmptyComponent={
+                               <Center flex={1} py={20}>
+                                   <Text color="coolGray.600">No trainers found.</Text>
+                               </Center>
+                           }
+                           renderItem={({ item }) => (
+                               <TouchableOpacity onPress={() => ensureDmAndOpen(item)} style={styles.rowCard}>
+                                   <Avatar source={item.avatarUrl ? { uri: item.avatarUrl } : undefined}>
+                                       {item.name?.[0] || "T"}
+                                   </Avatar>
+                                   <VStack ml={12}>
+                                       <Text style={styles.title}>{item.name || "Trainer"}</Text>
+                                       <Text style={styles.subtitle}>Tap to start chat</Text>
+                                   </VStack>
+                               </TouchableOpacity>
+                           )}
+                           ListHeaderComponent={
+                               <Box p={12}>
+                                   <Text style={styles.section}>Start a chat with your trainer</Text>
+                               </Box>
+                           }
+                           contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20, flexGrow: 1 }}
+                       />
+                   </>
+               )}
+           </View>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    row: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eee" },
-    badge: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: "#ef4444", alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+// segmented tabs
+    tabsContainer: {
+        flexDirection: "row",
+        backgroundColor: "#f1f5f9",
+        padding: 4,
+        width: "100%",
+        borderRadius: 14,
+        gap: 6,
+    },
+    tabBtn: {
+        flex: 1,
+        paddingVertical: 10,
+        borderRadius: 10,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "transparent",
+    },
+    tabBtnActive: {
+        backgroundColor: "#2563eb",
+        elevation: 1,
+    },
+    tabText: { fontWeight: "600", color: "#0f172a" },
+    tabTextActive: { color: "white" },
+
+// list rows → card look
+    rowCard: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        marginBottom: 10,
+        backgroundColor: "white",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#e5e7eb",
+        shadowColor: "#000",
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 1,
+    },
+    title: { fontWeight: "700", fontSize: 16, color: "#0f172a" },
+    subtitle: { color: "#64748b", marginTop: 2 },
+    section: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
+    badge: {
+        minWidth: 22,
+        height: 22,
+        borderRadius: 11,
+        backgroundColor: "#ef4444",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 6,
+    },
+    badgeText: { color: "white", fontSize: 12, fontWeight: "700" },
+
+// search
+    searchBox: {
+        backgroundColor: "#f1f5f9",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+    },
+    searchInput: {
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 16,
+        color: "#0f172a",
+    },
 });
+

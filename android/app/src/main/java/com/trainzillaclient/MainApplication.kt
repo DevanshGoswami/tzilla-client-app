@@ -1,4 +1,4 @@
-package com.devops.tzilla.trainzillaclient
+package com.trainzillaclient
 
 import android.app.Application
 import android.content.res.Configuration
