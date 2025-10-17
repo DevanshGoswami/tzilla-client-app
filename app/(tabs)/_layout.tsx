@@ -1,12 +1,36 @@
 import { Tabs, router } from "expo-router";
 import { FontAwesome5 } from '@expo/vector-icons';
-import { TouchableOpacity } from "react-native";
+import {ActivityIndicator, TouchableOpacity, View} from "react-native";
+import {useEnsureFitnessProfile} from "@/hooks/useEnsureFitnessProfile";
+import { Image } from "react-native";
+import logoLong from "../../assets/logo_long.png"; // adjust path if needed
+
 
 export default function TabsLayout() {
+
+    const { loading } = useEnsureFitnessProfile();
+
+    if (loading) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" />
+            </View>
+        );
+    }
+
     return (
         <Tabs
             screenOptions={{
-                headerTitle: "TrainZilla",
+                headerTitle: () => (
+                    <Image
+                        source={logoLong}
+                        style={{
+                            width: 140,
+                            height: 30,
+                            resizeMode: "contain",
+                        }}
+                    />
+                ),
                 tabBarActiveTintColor: "#111",
                 tabBarInactiveTintColor: "#999",
                 tabBarStyle: {
@@ -44,7 +68,7 @@ export default function TabsLayout() {
                 ),
             }}
         >
-            <Tabs.Screen
+        <Tabs.Screen
                 name="home"
                 options={{
                     title: "Home",

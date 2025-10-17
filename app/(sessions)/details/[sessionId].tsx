@@ -172,7 +172,7 @@ export default function SessionDetailsScreen() {
     const duration = getDuration(session.scheduledStart, session.scheduledEnd);
 
     return (
-        <Screen>
+        <Screen withHeader>
             <SafeAreaView style={styles.container}>
                 {/* Header */}
                 <View style={styles.header}>

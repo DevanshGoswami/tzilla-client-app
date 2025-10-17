@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { KeyboardAvoidingView, Platform, FlatList, Alert, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, View, Image } from "react-native";
 import { Box, Text, HStack, VStack, Avatar, Badge, Button, Spinner, Center } from "native-base";
 import * as ImagePicker from "expo-image-picker";
@@ -109,8 +111,17 @@ export default function ChatRoom() {
                 });
             });
         };
-        if (socket.connected) doJoin();
-        else socket.once("connect", doJoin);
+
+        if (socket.connected) {
+            doJoin();
+            // also restore focus state after reconnect
+            emit("focusRoom", String(roomId));
+        } else {
+            socket.once("connect", () => {
+                doJoin();
+                emit("focusRoom", String(roomId));
+            });
+        }
 
         const onMsg = (msg: ChatMessage) => {
             if (msg.roomId !== roomId) return;
@@ -203,6 +214,47 @@ export default function ChatRoom() {
             Alert.alert("Image upload failed", e.message);
         }
     }, [emit, roomId, token]);
+
+    // tell server when user is "looking at" this room
+    useFocusEffect(
+        useCallback(() => {
+            if (socket && roomId) {
+                emit("focusRoom", String(roomId));
+            }
+            return () => {
+                if (socket && roomId) {
+                    emit("blurRoom", String(roomId));
+                }
+            };
+        }, [socket, roomId, emit])
+    );
+
+    useFocusEffect(
+        useCallback(() => {
+            const sub = AppState.addEventListener("change", (state) => {
+                if (!socket || !roomId) return;
+                if (state === "active") {
+                    emit("focusRoom", String(roomId));
+                } else if (state === "background" || state === "inactive") {
+                    emit("blurRoom", String(roomId));
+                }
+            });
+            return () => sub.remove();
+        }, [socket, roomId, emit])
+    );
+
+    const prevRoomIdRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        if (!socket) return;
+        const prev = prevRoomIdRef.current;
+        if (prev && prev !== roomId) {
+            emit("blurRoom", String(prev));
+        }
+        if (roomId) {
+            emit("focusRoom", String(roomId));
+        }
+        prevRoomIdRef.current = roomId;
+    }, [roomId, socket, emit]);
 
     const [composerH, setComposerH] = useState(0);
     const bottomPad = Math.max(8, insets.bottom || 0);

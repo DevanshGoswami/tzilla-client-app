@@ -154,3 +154,43 @@ export interface SubscriptionPlan {
     createdAt: ISODateString;
     updatedAt: ISODateString;
 }
+
+
+export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
+export type ActivityLevel = 'SEDENTARY'|'LIGHT'|'MODERATE'|'ACTIVE'|'VERY_ACTIVE';
+export type GoalType = 'FAT_LOSS'|'MUSCLE_GAIN'|'MAINTAIN';
+
+
+export interface FitnessProfileQuery {
+    fitnessProfile: {
+        userId: string;
+        createdAt: string;
+        updatedAt: string;
+        profile: {
+            name: string;
+            age: number;
+            gender: Gender;
+            heightCm: number;
+            currentWeightKg: number;
+            activityLevel: ActivityLevel;
+            goal: GoalType;
+            targetWeightKg?: number;
+            targetDateISO?: string;
+            fitnessExperience?: 'BEGINNER'|'INTERMEDIATE'|'ADVANCED';
+            healthConditions?: { name: string; notes?: string }[];
+            startedOnISO: string;
+            progressCount: number;
+            weightDeltaKgFromStart?: number;
+            computed: { bmi: number; bmiCategory: string; tdee: number; recommendedCaloriesPerDay: number };
+        } | null;
+        progress: Array<{ id: string; dateISO: string; weightKg?: number }>;
+    } | null;
+}
+
+export type HourSlot = {
+    startUtc: string;
+    endUtc: string;
+    ymdLocal: string;   // "YYYY-MM-DD" in trainer timezone
+    startLocal: string; // "HH:mm"
+    endLocal: string;   // "HH:mm"
+};

@@ -1,4 +1,5 @@
 import { gql } from "@apollo/client";
+import {CLIENT_PROFILE_SUMMARY_FIELDS} from "@/graphql/fragments";
 
 export const GOOGLE_AUTH_SIGN_IN = gql`
   mutation GoogleAuthSignIn($idToken: String!) {
@@ -115,4 +116,40 @@ export const REGISTER_DEVICE_TOKEN = gql`
   mutation RegisterDeviceToken($input: DeviceTokenInput!) {
     registerDeviceToken(input: $input)
   }
+`;
+
+export const ONBOARD_OR_UPDATE = gql`
+    mutation OnboardOrUpdate($input: OnboardingInput!) {
+        onboardOrUpdate(input: $input) {
+            userId
+            profile { ...ClientProfileSummaryFields }
+            progress {
+                id dateISO weightKg notes
+                bmi tdee caloriesRecommended
+                measurements { neckCm waistCm hipCm }
+                createdAt
+            }
+            createdAt
+            updatedAt
+        }
+    }
+    ${CLIENT_PROFILE_SUMMARY_FIELDS}
+`;
+
+export const ADD_PROGRESS = gql`
+    mutation AddProgress($input: AddProgressInput!) {
+        addProgress(input: $input) {
+            userId
+            profile { ...ClientProfileSummaryFields }  # ensure Goal + startedOnISO are present
+            progress {
+                id dateISO weightKg notes
+                bmi tdee caloriesRecommended
+                measurements { neckCm waistCm hipCm }
+                createdAt
+            }
+            createdAt
+            updatedAt
+        }
+    }
+    ${CLIENT_PROFILE_SUMMARY_FIELDS}
 `;

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "859715277993",
+    "project_id": "tzilla-5f404",
+    "storage_bucket": "tzilla-5f404.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:859715277993:android:93843d5a5283e9c07dc5b8",
+        "android_client_info": {
+          "package_name": "com.devops.tzilla.trainzillaclient"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCYXYm4rbhQ-41gbfxlbnDetZY3pQZXtx4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

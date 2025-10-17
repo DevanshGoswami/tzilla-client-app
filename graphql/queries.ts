@@ -178,3 +178,81 @@ export const GET_SESSION_BY_ID = gql`
         }
     }
 `;
+
+
+export const FITNESS_PROFILE = gql`
+    query FitnessProfile($userId: ID!) {
+        fitnessProfile(userId: $userId) {
+            userId
+            createdAt
+            updatedAt
+            profile {
+                name
+                age
+                gender
+                heightCm
+                currentWeightKg
+                activityLevel
+                goal
+                targetWeightKg
+                targetDateISO
+                fitnessExperience
+                healthConditions { name notes }
+                photos { front side back }
+                latestMeasurements { neckCm waistCm hipCm }
+                computed {
+                    bmi
+                    bmiCategory
+                    bmr
+                    tdee
+                    estimatedBodyFatPct
+                    recommendedCaloriesPerDay
+                    summaries { caloriesLine bmiLine }
+                }
+                startedOnISO
+                progressCount
+                weightDeltaKgFromStart
+            }
+            progress {
+                id
+                dateISO
+                weightKg
+                measurements { neckCm waistCm hipCm }
+                notes
+                createdAt
+                bmi
+                tdee
+                caloriesRecommended
+            }
+        }
+    }
+`;
+
+
+export const PROGRESS_REPORT = gql`
+    query ProgressReport($userId: ID!, $range: ProgressRange) {
+        progressReport(userId: $userId, range: $range) {
+            id
+            dateISO
+            weightKg
+            measurements { neckCm waistCm hipCm }
+            notes
+            createdAt
+            bmi
+            tdee
+            caloriesRecommended
+        }
+    }
+`;
+
+export const GET_TRAINER_SLOTS_NEXT_7_DAYS = gql`
+    query TrainerAvailableHourSlotsNext7Days($trainerId: ID!) {
+        trainerAvailableHourSlotsNext7Days(trainerId: $trainerId) {
+            startUtc
+            endUtc
+            ymdLocal
+            startLocal
+            endLocal
+        }
+    }
+`;

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "trainzilla-client",
+    "name": "TrainZilla",
     "slug": "trainzilla-client",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,18 +9,22 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "icon": "./assets/icons/ios/AppIcon@2x.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.devops.tzilla.trainzillaclient",
       "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
+      "icon": "./assets/icons/android/res/mipmap-xxxhdpi/ic_launcher.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/icons/android/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
+        "backgroundImage": "./assets/icons/android/res/mipmap-xxxhdpi/ic_launcher_background.png"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.devops.tzilla.trainzillaclient",
-      "softwareKeyboardLayoutMode": "resize"
+      "softwareKeyboardLayoutMode": "resize",
+      "googleServicesFile": "./google-services.json",
+      "permissions": ["android.permission.POST_NOTIFICATIONS"]
     },
     "web": {
       "bundler": "metro",
@@ -32,11 +36,13 @@
       "@react-native-google-signin/google-signin",
       "@react-native-firebase/app",
       "@react-native-firebase/messaging",
+      "expo-notifications",
+      "expo-sensors",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/splash.png",
+          "imageWidth": 400,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
         }

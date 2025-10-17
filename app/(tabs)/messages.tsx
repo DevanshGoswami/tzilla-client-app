@@ -1,6 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, TouchableOpacity, StyleSheet, SafeAreaView, View, TextInput, Animated } from "react-native";
-import { Box, Text, HStack, VStack, Avatar, Spinner, Center, Pressable } from "native-base";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    FlatList,
+    TouchableOpacity,
+    StyleSheet,
+    SafeAreaView,
+    View,
+    TextInput,
+    RefreshControl,
+    Dimensions
+} from "react-native";
+import { Box, Text, HStack, VStack, Avatar, Spinner, Center, Pressable, Button } from "native-base";
 import { useQuery } from "@apollo/client/react";
 import { GET_ME, GET_TRAINERS_FOR_CLIENT } from "@/graphql/queries";
 import { useSocket } from "@/providers/SocketProvider";
@@ -9,25 +18,176 @@ import { ENV } from "@/lib/env";
 import { router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 
+/* ================================
+   Helpers
+================================ */
 export function getPeerInfo(room: any, myId?: string) {
     const peer = (room?.participants || []).find((p: any) => {
         const pid = p?.userId ?? p?.user?._id ?? p?.user?.id ?? "";
         return pid && pid !== (myId ?? "");
     });
-
     const id = peer?.userId ?? peer?.user?._id ?? peer?.user?.id ?? "";
     const name = peer?.user?.name ?? "";
     const email = peer?.user?.email ?? "";
     const avatarUrl = peer?.user?.avatarUrl ?? "";
-
     const display = name || email || id || "Trainer";
     const initial = display.trim().charAt(0).toUpperCase();
-
     return { id, name, email, avatarUrl, display, initial };
 }
 
+type TabKey = "current" | "new";
+
+/* ================================
+   Header (IG-style)
+================================ */
+function Header({ onPressNew }: { onPressNew: () => void }) {
+    return (
+        <HStack px={16} py={12} alignItems="center" justifyContent="space-between" bg="white" borderBottomWidth={1} borderBottomColor="#f2f2f2">
+            <Text style={styles.headerTitle}>Messages</Text>
+            <HStack alignItems="center" space={4}>
+                {/* right icon — create new message */}
+                <Pressable accessibilityRole="button" onPress={onPressNew} hitSlop={12}>
+                    <Text style={styles.headerIcon}>✉️</Text>
+                </Pressable>
+            </HStack>
+        </HStack>
+    );
+}
+
+/* ================================
+   Tab bar (underline indicator)
+================================ */
+function TabBar({ value, onChange }: { value: TabKey; onChange: (t: TabKey) => void }) {
+    return (
+        <HStack bg="white" px={16} pt={8} pb={4} alignItems="center" borderBottomWidth={1} borderBottomColor="#f2f2f2">
+            {(["current", "new"] as TabKey[]).map((t) => {
+                const active = value === t;
+                return (
+                    <Pressable key={t} onPress={() => onChange(t)} style={styles.tabItem} accessibilityRole="tab">
+                        <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                            {t === "current" ? "Chats" : "Explore"}
+                        </Text>
+                        {active && <View style={styles.tabUnderline} />}
+                    </Pressable>
+                );
+            })}
+        </HStack>
+    );
+}
+
+/* ================================
+   Search (rounded pill)
+================================ */
+function PillSearch({
+                        value,
+                        onChangeText,
+                        placeholder,
+                        onClear,
+                    }: {
+    value: string;
+    onChangeText: (s: string) => void;
+    placeholder?: string;
+    onClear?: () => void;
+}) {
+    return (
+        <Box bg="white" px={16} pt={6} pb={6} borderBottomWidth={0}>
+            <View style={styles.searchWrap}>
+                <Text style={styles.searchIcon}>🔎</Text>
+                <TextInput
+                    placeholder={placeholder ?? "Search"}
+                    placeholderTextColor="#9aa3ad"
+                    value={value}
+                    onChangeText={onChangeText}
+                    style={styles.searchInput}
+                    returnKeyType="search"
+                />
+                {!!value && (
+                    <Pressable onPress={onClear}>
+                        <Text style={styles.clearIcon}>×</Text>
+                    </Pressable>
+                )}
+            </View>
+        </Box>
+    );
+}
+
+/* ================================
+   Chat Row (IG DM vibe)
+================================ */
+function ChatRow({
+                     item,
+                     userId,
+                     presence,
+                     onPress,
+                 }: {
+    item: any;
+    userId?: string;
+    presence: Record<string, any> | undefined;
+    onPress: () => void;
+}) {
+    const peer = getPeerInfo(item, userId);
+    const isOnline = !!presence?.[peer.id];
+    const unread = item.unread?.[String(userId)] || 0;
+
+    const time = item.lastMessageAt
+        ? new Date(item.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : "";
+
+    return (
+        <TouchableOpacity onPress={onPress} style={styles.dmRow} activeOpacity={0.7}>
+            <View style={{ position: "relative" }}>
+                <Avatar size="md" source={peer.avatarUrl ? { uri: peer.avatarUrl } : undefined}>
+                    {peer.initial}
+                </Avatar>
+                <View style={[styles.dot, { backgroundColor: isOnline ? "#31c553" : "#cbd5e1" }]} />
+            </View>
+
+            <VStack ml={12} flex={1} space={0.5}>
+                <HStack alignItems="center" justifyContent="space-between">
+                    <Text style={styles.dmName} numberOfLines={1}>{peer.display}</Text>
+                    {!!time && <Text style={styles.dmTime}>{time}</Text>}
+                </HStack>
+                <HStack alignItems="center" space={2}>
+                    {unread > 0 && <View style={styles.unreadDot} />}
+                    <Text style={[styles.dmPreview, unread > 0 && styles.dmPreviewUnread]} numberOfLines={1}>
+                        {item.lastMessageText || "Start the conversation"}
+                    </Text>
+                </HStack>
+            </VStack>
+        </TouchableOpacity>
+    );
+}
+
+/* ================================
+   Explore Grid (trainers)
+================================ */
+const COLS = 3;
+const GUTTER = 12;
+const SCREEN_W = Dimensions.get("window").width;
+const CARD_W = Math.floor((SCREEN_W - 16 * 2 - GUTTER * (COLS - 1)) / COLS);
+
+function TrainerCard({
+                         item,
+                         onPress,
+                     }: {
+    item: { _id: string; name: string; avatarUrl?: string };
+    onPress: () => void;
+}) {
+    return (
+        <Pressable onPress={onPress} style={[styles.trainerCard, { width: CARD_W }]}>
+            <Avatar size="lg" source={item.avatarUrl ? { uri: item.avatarUrl } : undefined}>
+                {item.name?.[0] || "T"}
+            </Avatar>
+            <Text numberOfLines={1} style={styles.trainerName}>{item.name || "Trainer"}</Text>
+        </Pressable>
+    );
+}
+
+/* ================================
+   Main
+================================ */
 export default function ChatList() {
-    // ---- tokens ----
+    // tokens
     const [token, setToken] = useState<string | null>(null);
     const [tokenLoading, setTokenLoading] = useState(true);
     useEffect(() => {
@@ -44,7 +204,7 @@ export default function ChatList() {
         return () => { mounted = false; };
     }, []);
 
-    // ---- me & trainers ----
+    // me & trainers
     const { data: meData, loading: meLoading, error: meError } = useQuery(GET_ME, { fetchPolicy: "cache-first" });
     // @ts-ignore
     const me = meData?.getMe ?? meData?.me ?? meData?.user;
@@ -57,181 +217,135 @@ export default function ChatList() {
     // @ts-ignore
     const trainers = (trainersData?.getTrainersForClient || []) as Array<{ _id: string; name: string; avatarUrl?: string }>;
 
-    type TabKey = "current" | "new";
     const [tab, setTab] = useState<TabKey>("current");
     const [trainerSearch, setTrainerSearch] = useState("");
-    const filteredTrainers = (trainers || []).filter(t =>
-        (t?.name || "").toLowerCase().includes(trainerSearch.toLowerCase())
+
+    const filteredTrainers = useMemo(
+        () => (trainers || []).filter(t => (t?.name || "").toLowerCase().includes(trainerSearch.toLowerCase())),
+        [trainers, trainerSearch]
     );
 
-    function SegmentedTabs({
-                               value,
-                               onChange,
-                           }: {
-        value: TabKey;
-        onChange: (k: TabKey) => void;
-    }) {
-        return (
-            <HStack px={12} pt={12} pb={10} bg="white" borderBottomWidth={1} borderBottomColor="#eee">
-                <Box
-                    style={styles.tabsContainer}
-                    accessibilityRole="tablist"
-                >
-                    <Pressable accessibilityRole="tab" onPress={() => onChange("current")} style={[styles.tabBtn, value === "current" && styles.tabBtnActive]}>
-                        <Text style={[styles.tabText, value === "current" && styles.tabTextActive]}>Current Chats</Text>
-                    </Pressable>
-                    <Pressable accessibilityRole="tab" onPress={() => onChange("new")} style={[styles.tabBtn, value === "new" && styles.tabBtnActive]}>
-                        <Text style={[styles.tabText, value === "new" && styles.tabTextActive]}>New Chat</Text>
-                    </Pressable>
-                </Box>
-            </HStack>
-        );
-    }
-
-    // when we first get a userId (skip -> active), ensure trainers load
-    useEffect(() => {
-        if (userId) refetchTrainers?.();
-    }, [userId, refetchTrainers]);
-
-    // if user switches to "New Chat" and trainers list is empty, try refetch
-    useEffect(() => {
-        if (tab === "new" && userId && (!trainers || trainers.length === 0)) {
-            refetchTrainers?.();
-        }
-    }, [tab, userId, trainers, refetchTrainers]);
-
-    // ---- socket presence & rooms ----
+    // socket & rooms
     const { socket, emit, presence } = useSocket() as any;
     const [rooms, setRooms] = useState<any[]>([]);
     const [roomsLoading, setRoomsLoading] = useState(false);
     const [roomsError, setRoomsError] = useState<string | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
 
+    const fetchRooms = useCallback(async () => {
+        if (!token) return [];
+        const res = await fetch(`${ENV.API_URL}/api/chat/chats`, {
+            headers: { Authorization: `Bearer ${token}`, role: "client" },
+        });
+        if (!res.ok) throw new Error(`Rooms fetch failed: ${res.status}`);
+        return (await res.json()) || [];
+    }, [token]);
 
     const refreshRooms = useCallback(async () => {
-          if (!token) return;
-          try {
-                setRoomsLoading(true);
-                setRoomsError(null);
-                const res = await fetch(`${ENV.API_URL}/api/chat/chats`, {
-                      headers: { Authorization: `Bearer ${token}`, role: "client" },
-                });
-                if (!res.ok) throw new Error(`Rooms fetch failed: ${res.status}`);
-                const arr = (await res.json()) || [];
-                setRooms(arr);
-              } catch (e: any) {
-                setRoomsError(e?.message || "Failed to load chats");
-              } finally {
-                setRoomsLoading(false);
-              }
-        }, [token]);
+        if (!token) return;
+        try {
+            setRoomsLoading(true);
+            setRoomsError(null);
+            const arr = await fetchRooms();
+            setRooms(arr);
+        } catch (e: any) {
+            setRoomsError(e?.message || "Failed to load chats");
+        } finally {
+            setRoomsLoading(false);
+        }
+    }, [token, fetchRooms]);
 
-        // initial when screen focuses
-            useFocusEffect(useCallback(() => {
-                  refreshRooms();
-                }, [refreshRooms]));
+    const onPullRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try { const arr = await fetchRooms(); setRooms(arr); }
+        finally { setRefreshing(false); }
+    }, [fetchRooms]);
 
-        // also refresh when socket (re)connects
-            useEffect(() => {
-                  if (!socket) return;
-                  const onConnect = () => refreshRooms();
-                  socket.on("connect", onConnect);
-                  return () => { socket.off("connect", onConnect); };
-                }, [socket, refreshRooms]);
+    // initial load + socket reconnection refresh
+    useFocusEffect(useCallback(() => { refreshRooms(); }, [refreshRooms]));
+    useEffect(() => {
+        if (!socket) return;
+        const onConnect = () => refreshRooms();
+        socket.on("connect", onConnect);
+        return () => { socket.off("connect", onConnect); };
+    }, [socket, refreshRooms]);
 
-    // live updates: bump lastMessageText / unread and clear on readReceipt
-        useEffect(() => {
-              if (!socket || !userId) return;
-              const onMsg = (msg: any) => {
-                    setRooms(prev => {
-                          const next = [...prev];
-                          const i = next.findIndex(r => r._id === msg.roomId);
-                          if (i === -1) return prev; // unknown room; wait for refreshRooms
-                          const r = next[i];
-                          const inc = msg.from === userId ? 0 : 1;
-                          next[i] = {
-                                ...r,
-                                lastMessageText: msg.type === "text" ? (msg.text || "") : "[image]",
-                                lastMessageAt: msg.createdAt || new Date().toISOString(),
-                                unread: { ...(r.unread || {}), [userId]: (r.unread?.[userId] || 0) + inc },
-                          };
-                          // move to top
-                              next.sort((a, b) => +new Date(b.lastMessageAt) - +new Date(a.lastMessageAt));
-                          return next;
-                        });
-                  };
-              const onRead = (evt: any) => {
-                    if (evt?.userId !== userId) return;
-                    setRooms(prev => prev.map(r => r._id === evt.roomId
-                      ? { ...r, unread: { ...(r.unread || {}), [userId]: 0 } }
-                          : r
-                        ));
-                  };
-              socket.on("message", onMsg);
-              socket.on("readReceipt", onRead);
-              return () => {
-                    socket.off("message", onMsg);
-                    socket.off("readReceipt", onRead);
-                  };
-            }, [socket, userId]);
+    // live updates
+    useEffect(() => {
+        if (!socket || !userId) return;
+        const onMsg = (msg: any) => {
+            setRooms(prev => {
+                const next = [...prev];
+                const i = next.findIndex(r => r._id === msg.roomId);
+                if (i === -1) return prev;
+                const r = next[i];
+                const inc = msg.from === userId ? 0 : 1;
+                next[i] = {
+                    ...r,
+                    lastMessageText: msg.type === "text" ? (msg.text || "") : "[image]",
+                    lastMessageAt: msg.createdAt || new Date().toISOString(),
+                    unread: { ...(r.unread || {}), [userId]: (r.unread?.[userId] || 0) + inc },
+                };
+                next.sort((a, b) => +new Date(b.lastMessageAt) - +new Date(a.lastMessageAt));
+                return next;
+            });
+        };
+        const onRead = (evt: any) => {
+            if (evt?.userId !== userId) return;
+            setRooms(prev => prev.map(r => r._id === evt.roomId
+                ? { ...r, unread: { ...(r.unread || {}), [userId]: 0 } }
+                : r
+            ));
+        };
+        socket.on("message", onMsg);
+        socket.on("readReceipt", onRead);
+        return () => {
+            socket.off("message", onMsg);
+            socket.off("readReceipt", onRead);
+        };
+    }, [socket, userId]);
 
-    // ✅ FIX 1: match server signature -> (peerUserId, cb)
+    // navigation helpers (unchanged)
     const startDm = (trainerId: string) => {
-        console.log('startDm tap', trainerId);
-        emit('startDm', trainerId, 'trainer', (resp: any) => {
-            console.log('startDm ack', resp);
-            if (resp?.ok) router.push({ pathname: '/(messages)/[trainerId]', params: { trainerId, roomId: resp.roomId } });
-            else alert(resp?.error || 'Failed to start chat');
+        emit("startDm", trainerId, "trainer", (resp: any) => {
+            if (resp?.ok) router.push({ pathname: "/(messages)/[trainerId]", params: { trainerId, roomId: resp.roomId } });
+            else alert(resp?.error || "Failed to start chat");
         });
     };
+    const openRoom = (room: any) => {
+        const peer = getPeerInfo(room, userId);
+        router.push({
+            pathname: "/(messages)/[trainerId]",
+            params: { trainerId: peer.id, roomId: room._id, name: peer.display, avatar: peer.avatarUrl },
+        });
+    };
+    const ensureDmAndOpen = useCallback(async (trainer: { _id: string; name: string; avatarUrl?: string }) => {
+        const existing = rooms.find(r =>
+            (r.participants || []).some((p: any) => (p.userId ?? p.user?._id ?? p.user?.id) === trainer._id)
+        );
+        if (existing) return openRoom(existing);
+        emit("startDm", trainer._id, "trainer", async (resp: any) => {
+            if (!resp?.ok) return alert(resp?.error || "Failed to start chat");
+            await refreshRooms();
+            const created = rooms.find(rm => rm._id === resp.roomId);
+            if (created) openRoom(created);
+            else router.push({ pathname: "/(messages)/[trainerId]", params: { trainerId: trainer._id, roomId: resp.roomId, name: trainer.name, avatar: trainer.avatarUrl ?? "" } });
+        });
+    }, [emit, rooms, refreshRooms]);
 
-     const openRoom = (room: any) => {
-           const peer = getPeerInfo(room, userId);
-           router.push({
-                 pathname: "/(messages)/[trainerId]",
-                 params: { trainerId: peer.id, roomId: room._id, name: peer.display, avatar: peer.avatarUrl },
-           });
-         };
-
-     // ensure: if room exists with trainer -> open; else create then refresh
-         const ensureDmAndOpen = useCallback(async (trainer: { _id: string; name: string; avatarUrl?: string }) => {
-           const existing = rooms.find(r =>
-                 (r.participants || []).some((p: any) =>
-                       (p.userId ?? p.user?._id ?? p.user?.id) === trainer._id
-                     )
-               );
-           if (existing) {
-                 openRoom(existing);
-                 return;
-               }
-           emit('startDm', trainer._id, 'trainer', async (resp: any) => {
-                 if (!resp?.ok) {
-                       alert(resp?.error || 'Failed to start chat');
-                       return;
-                     }
-                 await refreshRooms();
-                 const created = (await (async () => {
-                       const r = rooms.find(rm => rm._id === resp.roomId);
-                       return r || null;
-                     })()) || null;
-                 if (created) openRoom(created);
-                 else router.push({ pathname: "/(messages)/[trainerId]", params: { trainerId: trainer._id, roomId: resp.roomId, name: trainer.name, avatar: trainer.avatarUrl ?? "" } });
-               });
-         }, [emit, rooms, refreshRooms]);
-
-    const emptyState = rooms.length === 0;
-
-    // if there are no rooms, show New Chat by default
+    // default to Explore when no chats
     useEffect(() => {
-        if (rooms && rooms.length === 0) setTab("new");
+        const count = rooms?.length ?? 0;
+        setTab(count > 0 ? "current" : "new");
     }, [rooms]);
 
-    // ---- loading & error screens ----
-    if (tokenLoading || meLoading || trainersLoading || roomsLoading) {
+    // loading / error
+    if (tokenLoading || meLoading || (tab === "new" ? trainersLoading : roomsLoading)) {
         return (
             <SafeAreaView style={{ flex: 1 }}>
                 <Center flex={1}>
                     <Spinner size="lg" />
-                    <Text mt={3} color="coolGray.600">Loading chats…</Text>
+                    <Text mt={3} color="coolGray.600">Loading…</Text>
                 </Center>
             </SafeAreaView>
         );
@@ -248,168 +362,171 @@ export default function ChatList() {
         );
     }
 
+    /* ================================
+       Render
+    ================================== */
     return (
+        <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+            <Header onPressNew={() => setTab("new")} />
+            <TabBar value={tab} onChange={setTab} />
 
-         <SafeAreaView style={{ flex: 1, backgroundColor: "#f6f8fb" }}>
-            <SegmentedTabs value={tab} onChange={setTab} />
+            {tab === "current" ? (
+                <FlatList
+                    data={rooms}
+                    keyExtractor={(r) => r._id}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} />}
+                    ListEmptyComponent={
+                        <Center flex={1} py={24}>
+                            <Text color="coolGray.700" mb={2} fontWeight="700">No messages yet</Text>
+                            <Button variant="subtle" onPress={() => setTab("new")}>Find trainers</Button>
+                        </Center>
+                    }
+                    renderItem={({ item }) => (
+                        <ChatRow item={item} userId={userId} presence={presence} onPress={() => openRoom(item)} />
+                    )}
+                    contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24 }}
+                    style={{ flex: 1, backgroundColor: "#fff" }}
+                />
+            ) : (
+                <>
+                    <PillSearch
+                        value={trainerSearch}
+                        onChangeText={setTrainerSearch}
+                        placeholder="Search trainers"
+                        onClear={() => setTrainerSearch("")}
+                    />
+                    {/* Grid */}
+                    <FlatList
+                        data={filteredTrainers}
+                        keyExtractor={(t) => t._id}
+                        numColumns={COLS}
+                        columnWrapperStyle={{ justifyContent: "space-between", paddingHorizontal: 16, marginBottom: GUTTER }}
+                        ListHeaderComponent={
+                            <Box px={16} py={8} bg="white">
+                            <Text style={styles.sectionTitle}>Suggested</Text>
+                            </Box>
+                        }
+                        ListEmptyComponent={
+                            <Center flex={1} py={24}>
+                                <Text color="coolGray.700">No trainers found</Text>
+                            </Center>
+                        }
+                        renderItem={({ item }) => (
+                            <TrainerCard item={item} onPress={() => ensureDmAndOpen(item)} />
+                        )}
+                        contentContainerStyle={{ paddingBottom: 80 }}
+                        style={{ flex: 1, backgroundColor: "#fff" }}
+                    />
+                </>
+            )}
 
-            {/* content per tab */}
-           <View style={{ flex: 1 }}>
-               {tab === "current" ? (
-                   <FlatList
-                       style={{ flex: 1}}
-                       data={rooms}
-                       keyExtractor={(r) => r._id}
-                       ListEmptyComponent={
-                           <Center flex={1} py={20}>
-                               <Text color="coolGray.600">No recent chats yet.</Text>
-                               <Text mt={1} color="coolGray.500" fontSize="xs">Switch to “New Chat” to start one.</Text>
-                           </Center>
-                       }
-                       renderItem={({ item }) => {
-                           const peer = getPeerInfo(item, userId);
-                           const isOnline = !!presence?.[peer.id];
-                           const unread = item.unread?.[String(userId)] || 0;
-                           return (
-                               <TouchableOpacity onPress={() => openRoom(item)} style={styles.rowCard}>
-                                   <Avatar source={peer.avatarUrl ? { uri: peer.avatarUrl } : undefined}>{peer.initial}</Avatar>
-                                   <VStack ml={12} flex={1}>
-                                       <HStack alignItems="center" justifyContent="space-between">
-                                           <Text style={styles.title}>{peer.display}</Text>
-                                           <Box w={2} h={2} rounded="full" bg={isOnline ? "green.500" : "coolGray.400"} />
-                                       </HStack>
-                                       <Text style={styles.subtitle} numberOfLines={1}>{item.lastMessageText || "…"}</Text>
-                                   </VStack>
-                                   {unread > 0 && (
-                                       <View style={styles.badge}><Text style={styles.badgeText}>{unread}</Text></View>
-                                   )}
-                               </TouchableOpacity>
-                           );
-                       }}
-                       ListHeaderComponent={
-                           <Box p={12}>
-                               <Text style={styles.section}>Recent chats</Text>
-                           </Box>
-                       }
-                       contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20, flexGrow: 1 }}
-                   />
-               ) : (
-                   <>
-                       {/* search bar */}
-                       <Box px={12} pt={10} pb={6} bg="white" borderBottomWidth={1} borderBottomColor="#eee">
-                           <View style={styles.searchBox}>
-                               <TextInput
-                                   placeholder="Search trainers…"
-                                   placeholderTextColor="#94a3b8"
-                                   value={trainerSearch}
-                                   onChangeText={setTrainerSearch}
-                                   style={styles.searchInput}
-                                   returnKeyType="search"
-                               />
-                           </View>
-                       </Box>
-                       <FlatList
-                           style={{ flex: 1 }}
-                           data={filteredTrainers}
-                           keyExtractor={(t) => t._id}
-                           ListEmptyComponent={
-                               <Center flex={1} py={20}>
-                                   <Text color="coolGray.600">No trainers found.</Text>
-                               </Center>
-                           }
-                           renderItem={({ item }) => (
-                               <TouchableOpacity onPress={() => ensureDmAndOpen(item)} style={styles.rowCard}>
-                                   <Avatar source={item.avatarUrl ? { uri: item.avatarUrl } : undefined}>
-                                       {item.name?.[0] || "T"}
-                                   </Avatar>
-                                   <VStack ml={12}>
-                                       <Text style={styles.title}>{item.name || "Trainer"}</Text>
-                                       <Text style={styles.subtitle}>Tap to start chat</Text>
-                                   </VStack>
-                               </TouchableOpacity>
-                           )}
-                           ListHeaderComponent={
-                               <Box p={12}>
-                                   <Text style={styles.section}>Start a chat with your trainer</Text>
-                               </Box>
-                           }
-                           contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20, flexGrow: 1 }}
-                       />
-                   </>
-               )}
-           </View>
+            {/* FAB like IG compose */}
+            {tab === "current" && (
+                <Pressable
+                    onPress={() => setTab("new")}
+                    style={styles.fab}
+                    accessibilityRole="button"
+                >
+                    <Text style={styles.fabIcon}>✚</Text>
+                </Pressable>
+            )}
         </SafeAreaView>
     );
 }
 
+/* ================================
+   Styles
+================================ */
 const styles = StyleSheet.create({
-// segmented tabs
-    tabsContainer: {
-        flexDirection: "row",
-        backgroundColor: "#f1f5f9",
-        padding: 4,
-        width: "100%",
-        borderRadius: 14,
-        gap: 6,
+    headerTitle: {
+        fontSize: 22,
+        fontWeight: "800",
+        color: "#111827",
+        letterSpacing: 0.2,
     },
-    tabBtn: {
-        flex: 1,
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "transparent",
-    },
-    tabBtnActive: {
-        backgroundColor: "#2563eb",
-        elevation: 1,
-    },
-    tabText: { fontWeight: "600", color: "#0f172a" },
-    tabTextActive: { color: "white" },
+    headerIcon: { fontSize: 18 },
 
-// list rows → card look
-    rowCard: {
+    tabItem: {
+        flex: 1,
+        alignItems: "center",
+        paddingVertical: 10,
+        position: "relative",
+    },
+    tabText: { fontSize: 14, color: "#94a3b8", fontWeight: "700" },
+    tabTextActive: { color: "#111827" },
+    tabUnderline: {
+        position: "absolute",
+        bottom: -4,
+        height: 3,
+        width: 28,
+        borderRadius: 2,
+        backgroundColor: "#111827",
+    },
+
+    searchWrap: {
         flexDirection: "row",
         alignItems: "center",
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        marginBottom: 10,
-        backgroundColor: "white",
-        borderRadius: 12,
+        backgroundColor: "#f3f4f6",
+        borderRadius: 10,
         borderWidth: 1,
         borderColor: "#e5e7eb",
-        shadowColor: "#000",
-        shadowOpacity: 0.05,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 1,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
     },
-    title: { fontWeight: "700", fontSize: 16, color: "#0f172a" },
-    subtitle: { color: "#64748b", marginTop: 2 },
-    section: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
-    badge: {
-        minWidth: 22,
-        height: 22,
-        borderRadius: 11,
-        backgroundColor: "#ef4444",
+    searchIcon: { fontSize: 12, marginRight: 6, color: "#6b7280" },
+    clearIcon: { fontSize: 16, marginLeft: 6, color: "#6b7280" },
+    searchInput: { flex: 1, fontSize: 15, color: "#111827" },
+
+    dmRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 12,
+        paddingHorizontal: 8,
+    },
+    dmName: { fontSize: 16, fontWeight: "800", color: "#111827", maxWidth: "70%" },
+    dmTime: { fontSize: 11, color: "#9ca3af" },
+    dmPreview: { fontSize: 13, color: "#6b7280" },
+    dmPreviewUnread: { color: "#111827", fontWeight: "700" },
+    dot: {
+        position: "absolute",
+        bottom: -1,
+        right: -1,
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        borderWidth: 2,
+        borderColor: "#fff",
+    },
+    unreadDot: {
+        width: 7,
+        height: 7,
+        borderRadius: 3.5,
+        backgroundColor: "#2563eb",
+    },
+
+    sectionTitle: { fontSize: 13, fontWeight: "800", color: "#6b7280", textTransform: "uppercase", letterSpacing: 0.6 },
+
+    trainerCard: {
+        alignItems: "center",
+        gap: 6,
+    },
+    trainerName: { fontSize: 12, color: "#111827", fontWeight: "700", maxWidth: CARD_W },
+
+    fab: {
+        position: "absolute",
+        right: 16,
+        bottom: 24,
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        backgroundColor: "#111827",
         alignItems: "center",
         justifyContent: "center",
-        paddingHorizontal: 6,
+        shadowColor: "#000",
+        shadowOpacity: 0.2,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: 4,
     },
-    badgeText: { color: "white", fontSize: 12, fontWeight: "700" },
-
-// search
-    searchBox: {
-        backgroundColor: "#f1f5f9",
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#e2e8f0",
-    },
-    searchInput: {
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 16,
-        color: "#0f172a",
-    },
+    fabIcon: { fontSize: 24, color: "#fff", marginTop: -1 },
 });
-

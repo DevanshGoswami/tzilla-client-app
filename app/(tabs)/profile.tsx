@@ -113,14 +113,6 @@ export default function ProfileScreen() {
                     <Text style={styles.sectionTitle}>Account</Text>
 
                     <MenuOption
-                        icon="user-edit"
-                        title="Personal Information"
-                        subtitle="Update your profile and preferences"
-                        onPress={() => router.push("/(profile)/edit-info")}
-                        color="#4CAF50"
-                    />
-
-                    <MenuOption
                         icon="user-friends"
                         title="Trainer Invitations"
                         subtitle="Manage trainer connections"

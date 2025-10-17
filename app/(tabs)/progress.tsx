@@ -1,4 +1,4 @@
-import React, {useState} from "react";
+import React, { useMemo, useState } from "react";
 import {
     Box,
     VStack,
@@ -10,13 +10,136 @@ import {
     Progress,
     Badge,
     Heading,
-    Modal,
     Input,
     FormControl,
-    useDisclose
+    useDisclose,
+    Skeleton,
+    Divider,
+    Modal,
 } from "native-base";
+import { useQuery, useMutation } from "@apollo/client/react";
+import { gql } from "@apollo/client";
+import { GET_ME } from "@/graphql/queries";
+import {
+    Modal as RNModal,
+    View,
+    // Text,
+    TextInput,
+    Pressable,
+    Platform,
+    StyleSheet, KeyboardTypeOptions,
+} from "react-native";
+import WeightLineChartSvg from "@/components/WeightLineChart";
 
-// Stat Card Component
+/* ================================
+   GraphQL
+================================ */
+const FITNESS_PROFILE = gql`
+    query FitnessProfile($userId: ID!) {
+        fitnessProfile(userId: $userId) {
+            userId
+            profile {
+                name
+                age
+                gender
+                heightCm
+                currentWeightKg
+                activityLevel
+                goal
+                targetWeightKg
+                targetDateISO
+                fitnessExperience
+                latestMeasurements { neckCm waistCm hipCm }
+                computed {
+                    bmi
+                    bmiCategory
+                    bmr
+                    tdee
+                    estimatedBodyFatPct
+                    recommendedCaloriesPerDay
+                    summaries { caloriesLine bmiLine }
+                }
+                startedOnISO
+                progressCount
+                weightDeltaKgFromStart
+            }
+            createdAt
+            updatedAt
+        }
+    }
+`;
+
+const PROGRESS_REPORT = gql`
+    query ProgressReport($userId: ID!, $range: ProgressRange) {
+        progressReport(userId: $userId, range: $range) {
+            id
+            dateISO
+            weightKg
+            bmi
+            tdee
+            caloriesRecommended
+            createdAt
+        }
+    }
+`;
+
+const SESSIONS_FOR_CLIENT = gql`
+    query SessionsForClient($clientId: ID!, $pageNumber: Int!, $pageSize: Int!) {
+        sessionsForClient(clientId: $clientId, pagination: { pageNumber: $pageNumber, pageSize: $pageSize }) {
+            _id
+            type
+            status
+            scheduledStart
+            scheduledEnd
+            meetingLink
+            location { city state country }
+            createdAt
+            updatedAt
+        }
+    }
+`;
+
+const ADD_PROGRESS = gql`
+    mutation AddProgress($input: AddProgressInput!) {
+        addProgress(input: $input) {
+            userId
+            profile { currentWeightKg }
+            progress {
+                id
+                dateISO
+                weightKg
+                bmi
+                createdAt
+            }
+        }
+    }
+`;
+
+/* ================================
+   Helpers
+================================ */
+function parseDateSafe(input?: string | number | null): Date | null {
+    if (!input) return null;
+    if (typeof input === "number" || /^\d+$/.test(String(input))) {
+        const s = String(input);
+        let ms = Number(s);
+        if (s.length >= 16) ms = ms / 1_000_000; // ns -> ms
+        else if (s.length >= 13) ms = ms;        // ms
+        else if (s.length >= 10) ms = ms * 1000; // s -> ms
+        const d = new Date(ms);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(String(input));
+    return isNaN(d.getTime()) ? null : d;
+}
+const fmtDate = (input?: string | number | null) => {
+    const d = parseDateSafe(input);
+    return d ? d.toLocaleDateString() : "—";
+};
+
+/* ================================
+   Small UI bits
+================================ */
 function StatCard({
                       title,
                       currentValue,
@@ -24,226 +147,328 @@ function StatCard({
                       unit,
                       icon,
                       colorScheme = "primary",
-                      trend
+                      trend,
                   }: {
     title: string;
-    currentValue: string;
-    previousValue?: string;
-    unit: string;
+    currentValue: string | number;
+    previousValue?: string | number;
+    unit?: string;
     icon: string;
     colorScheme?: string;
     trend?: "up" | "down" | "stable";
 }) {
-    const getTrendIcon = () => {
-        switch (trend) {
-            case "up":
-                return "📈";
-            case "down":
-                return "📉";
-            case "stable":
-                return "➖";
-            default:
-                return "";
-        }
-    };
-
-    const getTrendColor = () => {
-        switch (trend) {
-            case "up":
-                return "success.500";
-            case "down":
-                return "red.500";
-            case "stable":
-                return "gray.500";
-            default:
-                return "gray.500";
-        }
-    };
+    const trendIcon = trend === "up" ? "📈" : trend === "down" ? "📉" : trend === "stable" ? "➖" : "";
+    const trendColor =
+        trend === "up" ? "success.500" : trend === "down" ? "red.500" : trend === "stable" ? "gray.500" : "gray.500";
 
     return (
         <Card flex={1} p={4} bg="white" rounded="xl" shadow={2}>
             <VStack space={2}>
                 <HStack justifyContent="space-between" alignItems="center">
-                    <Text fontSize="sm" color="gray.500" fontWeight="medium">
-                        {title}
-                    </Text>
+                    <Text fontSize="sm" color="gray.500" fontWeight="medium">{title}</Text>
                     <Text fontSize="xl">{icon}</Text>
                 </HStack>
                 <HStack alignItems="baseline" space={1}>
                     <Text fontSize="2xl" fontWeight="bold" color={`${colorScheme}.600`}>
                         {currentValue}
                     </Text>
-                    <Text fontSize="sm" color="gray.400">
-                        {unit}
+                    {unit ? <Text fontSize="sm" color="gray.400">{unit}</Text> : null}
+                </HStack>
+                {previousValue != null && trend && (
+                    <Text fontSize="xs" color={trendColor}>
+                        {trendIcon} vs last: {previousValue}{unit ? ` ${unit}` : ""}
                     </Text>
-                </HStack>
-                {previousValue && trend && (
-                    <HStack alignItems="center" space={1}>
-                        <Text fontSize="xs" color={getTrendColor()}>
-                            {getTrendIcon()} vs last week: {previousValue}
-                        </Text>
-                    </HStack>
                 )}
             </VStack>
         </Card>
     );
 }
 
-// Achievement Badge Component
-function AchievementBadge({
-                              title,
-                              description,
-                              icon,
-                              earned = false,
-                              progress
-                          }: {
-    title: string;
-    description: string;
-    icon: string;
-    earned?: boolean;
-    progress?: number;
+/* ================================
+   Weight Entry Modal
+================================ */
+// ⬇️ replace the whole WeightEntryModal with this
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+type SavePayload = {
+    weightKg: number;
+    dateISO: string;
+    measurements?: { neckCm?: number; waistCm?: number; hipCm?: number };
+    notes?: string;
+};
+
+export function WeightEntryModal({
+                                     isOpen,
+                                     onClose,
+                                     onSave,
+                                     saving,
+                                 }: {
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (payload: SavePayload) => void;
+    saving?: boolean;
 }) {
-    return (
-        <Card
-            p={4}
-            bg={earned ? "success.50" : "gray.50"}
-            rounded="xl"
-            shadow={1}
-            opacity={earned ? 1 : 0.7}
-        >
-            <VStack space={2}>
-                <HStack space={3} alignItems="center">
-                    <Text fontSize="2xl">{icon}</Text>
-                    <VStack flex={1}>
-                        <Text
-                            fontSize="md"
-                            fontWeight="semibold"
-                            color={earned ? "success.800" : "gray.600"}
-                        >
-                            {title}
-                        </Text>
-                        <Text
-                            fontSize="sm"
-                            color={earned ? "success.600" : "gray.500"}
-                        >
-                            {description}
-                        </Text>
-                    </VStack>
-                    {earned ? (
-                        <Badge colorScheme="success" variant="solid">
-                            ✓
-                        </Badge>
-                    ) : (
-                        progress && (
-                            <Text fontSize="xs" color="gray.400">
-                                {progress}%
-                            </Text>
-                        )
-                    )}
-                </HStack>
-                {!earned && progress && (
-                    <Progress
-                        value={progress}
-                        colorScheme="primary"
-                        size="sm"
-                        rounded="full"
-                    />
-                )}
-            </VStack>
-        </Card>
-    );
-}
-
-// Weight Entry Modal
-function WeightEntryModal({isOpen, onClose}: { isOpen: boolean; onClose: () => void }) {
     const [weight, setWeight] = useState("");
+    const [dateISO, setDateISO] = useState(todayISO());
+    const [neck, setNeck] = useState("");
+    const [waist, setWaist] = useState("");
+    const [hip, setHip] = useState("");
+    const [notes, setNotes] = useState("");
 
-    const handleSave = () => {
-        // Here you would save the weight to your backend
-        console.log("Saving weight:", weight);
-        onClose();
-        setWeight("");
+    const sanitizeDecimal = (s: string) =>
+        s.replace(",", ".").replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
+
+    const ISO_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+    const isValidISO = (v: string) => ISO_REGEX.test(v) && !Number.isNaN(new Date(v).getTime());
+    const parsedWeight = Number(weight);
+
+    const toNum = (v: string) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : undefined;
     };
 
+    const canSave =
+        Number.isFinite(parsedWeight) && parsedWeight > 0 && (!dateISO || isValidISO(dateISO));
+
+    const decimalKeyboard: KeyboardTypeOptions =
+        Platform.OS === "ios" ? "decimal-pad" : "numeric";
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose}>
-            <Modal.Content>
-                <Modal.CloseButton/>
-                <Modal.Header>Log Your Weight</Modal.Header>
-                <Modal.Body>
-                    <FormControl>
-                        <FormControl.Label>Current Weight</FormControl.Label>
-                        <Input
-                            placeholder="e.g., 75.5"
-                            keyboardType="decimal-pad"
+        <RNModal visible={isOpen} transparent animationType="slide" onRequestClose={onClose}>
+            <View style={S.backdrop}>
+                <View style={S.sheet}>
+                    <View style={S.header}>
+                        <Text style={S.title}>Log Progress</Text>
+                        <Pressable onPress={onClose}><Text style={S.link}>Close</Text></Pressable>
+                    </View>
+
+                    <View style={S.field}>
+                        <Text style={S.label}>Weight (kg)</Text>
+                        <TextInput
                             value={weight}
-                            onChangeText={setWeight}
-                            InputRightElement={<Box pr={3}><Text color="gray.400">kg</Text></Box>}
+                            onChangeText={(t) => setWeight(sanitizeDecimal(t))}
+                            keyboardType={decimalKeyboard}
+                            placeholder="e.g., 75.5"
+                            style={S.input}
                         />
-                        <FormControl.HelperText>
-                            Best to weigh yourself first thing in the morning
-                        </FormControl.HelperText>
-                    </FormControl>
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button.Group space={2}>
-                        <Button variant="ghost" colorScheme="blueGray" onPress={onClose}>
-                            Cancel
-                        </Button>
-                        <Button onPress={handleSave} isDisabled={!weight}>
-                            Save Weight
-                        </Button>
-                    </Button.Group>
-                </Modal.Footer>
-            </Modal.Content>
-        </Modal>
+                    </View>
+
+                    <View style={S.field}>
+                        <Text style={S.label}>Date (YYYY-MM-DD)</Text>
+                        <TextInput
+                            value={dateISO}
+                            onChangeText={setDateISO}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            placeholder={todayISO()}
+                            style={S.input}
+                        />
+                        {!isValidISO(dateISO) ? (
+                            <Text style={S.error}>Please use YYYY-MM-DD (e.g., {todayISO()}).</Text>
+                        ) : null}
+                    </View>
+
+                    <View style={[S.row, { gap: 12 }]}>
+                        <View style={[S.field, S.flex]}>
+                            <Text style={S.label}>Neck (cm)</Text>
+                            <TextInput
+                                value={neck}
+                                onChangeText={(t) => setNeck(sanitizeDecimal(t))}
+                                keyboardType={decimalKeyboard}
+                                placeholder="e.g., 38"
+                                style={S.input}
+                            />
+                        </View>
+                        <View style={[S.field, S.flex]}>
+                            <Text style={S.label}>Waist (cm)</Text>
+                            <TextInput
+                                value={waist}
+                                onChangeText={(t) => setWaist(sanitizeDecimal(t))}
+                                keyboardType={decimalKeyboard}
+                                placeholder="e.g., 85"
+                                style={S.input}
+                            />
+                        </View>
+                        <View style={[S.field, S.flex]}>
+                            <Text style={S.label}>Hip (cm)</Text>
+                            <TextInput
+                                value={hip}
+                                onChangeText={(t) => setHip(sanitizeDecimal(t))}
+                                keyboardType={decimalKeyboard}
+                                placeholder="e.g., 100"
+                                style={S.input}
+                            />
+                        </View>
+                    </View>
+
+                    <View style={S.field}>
+                        <Text style={S.label}>Notes</Text>
+                        <TextInput
+                            value={notes}
+                            onChangeText={setNotes}
+                            placeholder="Anything notable about today’s weigh-in"
+                            style={[S.input, { height: 44 }]}
+                        />
+                    </View>
+
+                    <View style={[S.row, { justifyContent: "flex-end", marginTop: 8 }]}>
+                        <Pressable onPress={onClose} style={[S.btn, S.btnGhost]}>
+                            <Text style={S.btnTextGhost}>Cancel</Text>
+                        </Pressable>
+                        <Pressable
+                            disabled={!canSave || !!saving}
+                            onPress={() =>
+                                onSave({
+                                    weightKg: parsedWeight,
+                                    dateISO: isValidISO(dateISO) ? dateISO : todayISO(),
+                                    measurements: { neckCm: toNum(neck), waistCm: toNum(waist), hipCm: toNum(hip) },
+                                    notes: notes.trim() ? notes.trim() : undefined,
+                                })
+                            }
+                            style={[S.btn, !canSave || saving ? S.btnDisabled : S.btnPrimary]}
+                        >
+                            <Text style={S.btnTextPrimary}>{saving ? "Saving..." : "Save"}</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </View>
+        </RNModal>
     );
 }
 
-export default function ProgressSection() {
-    const {isOpen, onOpen, onClose} = useDisclose();
 
-    const achievements = [
-        {
-            title: "First Workout",
-            description: "Complete your first workout session",
-            icon: "🏆",
-            earned: true
+/* ================================
+   Screen
+================================ */
+export default function ProgressSection() {
+    const { data: meData } = useQuery(GET_ME);
+    // @ts-ignore
+    const userId: string | undefined = meData?.user?._id;
+
+    const { isOpen, onOpen, onClose } = useDisclose();
+
+    // Profile
+    const { data: fpData, loading: fpLoading } = useQuery(FITNESS_PROFILE, {
+        variables: { userId: userId as string },
+        skip: !userId,
+        fetchPolicy: "no-cache",
+        nextFetchPolicy: "no-cache",
+    });
+
+    // Progress last 90 days (enough to compute trends safely)
+    const { data: prData, loading: prLoading, refetch: refetchProgress } = useQuery(PROGRESS_REPORT, {
+        variables: { userId: userId as string, range: { /* fromISO optional */ } },
+        skip: !userId,
+        fetchPolicy: "no-cache",
+        nextFetchPolicy: "no-cache",
+    });
+
+    // Sessions (just show completed)
+    const { data: sessData, loading: sessLoading } = useQuery(SESSIONS_FOR_CLIENT, {
+        variables: { clientId: userId as string, pageNumber: 1, pageSize: 50 },
+        skip: !userId,
+        fetchPolicy: "no-cache",
+        nextFetchPolicy: "no-cache",
+    });
+
+    // Add progress mutation
+    const [addProgress, { loading: saving }] = useMutation(ADD_PROGRESS, {
+        onCompleted: () => {
+            onClose();
+            refetchProgress();
         },
-        {
-            title: "Week Warrior",
-            description: "Complete 5 workouts in a week",
-            icon: "💪",
-            earned: true
-        },
-        {
-            title: "Consistency King",
-            description: "Workout 10 days in a row",
-            icon: "🔥",
-            earned: false,
-            progress: 70
-        },
-        {
-            title: "Weight Goal",
-            description: "Reach your target weight",
-            icon: "🎯",
-            earned: false,
-            progress: 45
-        }
-    ];
+    });
+
+    // Derive stats
+    // @ts-ignore
+    const profile = fpData?.fitnessProfile?.profile;
+    // @ts-ignore
+    const progress = (prData?.progressReport ?? []).slice().sort((a: any, b: any) => {
+        const da = parseDateSafe(a.dateISO)?.getTime() ?? 0;
+        const db = parseDateSafe(b.dateISO)?.getTime() ?? 0;
+        return db - da;
+    });
+
+    const latest = progress[0];
+    const prev = progress[1];
+
+    const currentWeight = latest?.weightKg ?? profile?.currentWeightKg ?? null;
+    const previousWeight = prev?.weightKg ?? null;
+    const weightTrend: "up" | "down" | "stable" | undefined =
+        previousWeight == null || currentWeight == null
+            ? undefined
+            : currentWeight < previousWeight
+                ? "down"
+                : currentWeight > previousWeight
+                    ? "up"
+                    : "stable";
+
+    const currentBmi = latest?.bmi ?? profile?.computed?.bmi ?? null;
+    const previousBmi = prev?.bmi ?? null;
+    const bmiTrend: "up" | "down" | "stable" | undefined =
+        previousBmi == null || currentBmi == null
+            ? undefined
+            : currentBmi < previousBmi
+                ? "down"
+                : currentBmi > previousBmi
+                    ? "up"
+                    : "stable";
+
+    // Completed sessions
+    const completedSessions = useMemo(() => {
+        // @ts-ignore
+        const list: any[] = sessData?.sessionsForClient ?? [];
+        return list
+            .filter((s) => s.status === "COMPLETED")
+            .sort((a, b) => {
+                const da = parseDateSafe(a.scheduledStart)?.getTime() ?? 0;
+                const db = parseDateSafe(b.scheduledStart)?.getTime() ?? 0;
+                return db - da;
+            })
+            .slice(0, 5);
+    }, [sessData]);
+
+    const handleSaveWeight = (payload: {
+        weightKg: number;
+        dateISO: string;
+        measurements?: { neckCm?: number; waistCm?: number; hipCm?: number };
+        notes?: string;
+    }) => {
+        if (!userId) return;
+        addProgress({
+            variables: {
+                input: {
+                    userId,
+                    dateISO: payload.dateISO,
+                    weightKg: payload.weightKg,
+                    measurements: payload.measurements,
+                    notes: payload.notes,
+                },
+            },
+        });
+    };
+
+    const loadingAny = fpLoading || prLoading || sessLoading;
 
     return (
         <Box flex={1} bg="gray.50" safeAreaTop>
             <ScrollView flex={1} showsVerticalScrollIndicator={false}>
                 <VStack space={6} p={6}>
                     {/* Header */}
-                    <VStack space={2}>
+                    <VStack space={1}>
                         <Heading size="lg" color="gray.800">
                             Your Progress
                         </Heading>
-                        <Text color="gray.500" fontSize="md">
-                            Track your fitness journey
-                        </Text>
+                        <HStack alignItems="center" justifyContent="space-between">
+                            <Text color="gray.500" fontSize="md">
+                                Track your fitness journey
+                            </Text>
+                            {profile ? (
+                                <Badge colorScheme="primary" variant="subtle">
+                                    {profile?.name ?? "You"}
+                                </Badge>
+                            ) : null}
+                        </HStack>
                     </VStack>
 
                     {/* Quick Stats */}
@@ -257,182 +482,212 @@ export default function ProgressSection() {
                             </Button>
                         </HStack>
 
-                        <HStack space={3}>
-                            <StatCard
-                                title="Current Weight"
-                                currentValue="78.5"
-                                previousValue="79.2"
-                                unit="kg"
-                                icon="⚖️"
-                                colorScheme="info"
-                                trend="down"
-                            />
-                            <StatCard
-                                title="BMI"
-                                currentValue="24.1"
-                                previousValue="24.3"
-                                unit=""
-                                icon="📊"
-                                colorScheme="success"
-                                trend="down"
-                            />
-                        </HStack>
+                        {loadingAny ? (
+                            <HStack space={3}>
+                                <Card flex={1} p={4}><Skeleton h="24" /></Card>
+                                <Card flex={1} p={4}><Skeleton h="24" /></Card>
+                            </HStack>
+                        ) : (
+                            <>
+                                <HStack space={3}>
+                                    <StatCard
+                                        title="Current Weight"
+                                        currentValue={currentWeight != null ? currentWeight.toFixed(1) : "—"}
+                                        previousValue={previousWeight != null ? previousWeight.toFixed(1) : undefined}
+                                        unit="kg"
+                                        icon="⚖️"
+                                        colorScheme="info"
+                                        trend={weightTrend}
+                                    />
+                                    <StatCard
+                                        title="BMI"
+                                        currentValue={currentBmi != null ? currentBmi.toFixed(1) : "—"}
+                                        previousValue={previousBmi != null ? previousBmi.toFixed(1) : undefined}
+                                        unit=""
+                                        icon="📊"
+                                        colorScheme="success"
+                                        trend={bmiTrend}
+                                    />
+                                </HStack>
 
-                        <HStack space={3}>
-                            <StatCard
-                                title="Workouts"
-                                currentValue="4"
-                                previousValue="3"
-                                unit="this week"
-                                icon="💪"
-                                colorScheme="purple"
-                                trend="up"
-                            />
-                            <StatCard
-                                title="Streak"
-                                currentValue="12"
-                                unit="days"
-                                icon="🔥"
-                                colorScheme="orange"
-                            />
-                        </HStack>
+                                <HStack space={3}>
+                                    <StatCard
+                                        title="TDEE"
+                                        currentValue={profile?.computed?.tdee ?? "—"}
+                                        unit="kcal"
+                                        icon="🔥"
+                                        colorScheme="orange"
+                                    />
+                                    <StatCard
+                                        title="Daily Target"
+                                        currentValue={profile?.computed?.recommendedCaloriesPerDay ?? "—"}
+                                        unit="kcal"
+                                        icon="🎯"
+                                        colorScheme="purple"
+                                    />
+                                </HStack>
+                            </>
+                        )}
                     </VStack>
 
-                    {/* Weight Progress Chart Placeholder */}
+                    {/* Weight Trend (placeholder for chart) */}
                     <Card p={4} bg="white" rounded="xl" shadow={2}>
                         <VStack space={4}>
                             <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                                Weight Trend (Last 30 Days)
+                                Weight Trend (Last 90 Days)
                             </Text>
 
-                            {/* Placeholder for actual chart */}
-                            <Box
-                                h={40}
-                                bg="gray.100"
-                                rounded="lg"
-                                justifyContent="center"
-                                alignItems="center"
-                            >
-                                <VStack alignItems="center" space={2}>
-                                    <Text fontSize="4xl">📈</Text>
-                                    <Text fontSize="sm" color="gray.500" textAlign="center">
-                                        Weight progress chart{"\n"}(Chart component goes here)
-                                    </Text>
-                                </VStack>
-                            </Box>
+                            <WeightLineChartSvg
+                                progress={progress /* your sorted array from progressReport */}
+                                height={260}
+                                width={360}   // adjust or compute from window width
+                            />
 
                             <HStack justifyContent="space-between">
                                 <VStack alignItems="center">
-                                    <Text fontSize="sm" color="gray.500">Starting</Text>
-                                    <Text fontSize="md" fontWeight="semibold">82.0 kg</Text>
-                                </VStack>
-                                <VStack alignItems="center">
-                                    <Text fontSize="sm" color="gray.500">Current</Text>
-                                    <Text fontSize="md" fontWeight="semibold" color="success.600">
-                                        78.5 kg
+                                    <Text fontSize="sm" color="gray.500">From</Text>
+                                    <Text fontSize="md" fontWeight="semibold">
+                                        {fmtDate(progress[progress.length - 1]?.dateISO)}
                                     </Text>
                                 </VStack>
                                 <VStack alignItems="center">
-                                    <Text fontSize="sm" color="gray.500">Goal</Text>
-                                    <Text fontSize="md" fontWeight="semibold">75.0 kg</Text>
+                                    <Text fontSize="sm" color="gray.500">To</Text>
+                                    <Text fontSize="md" fontWeight="semibold">
+                                        {fmtDate(progress[0]?.dateISO)}
+                                    </Text>
                                 </VStack>
                             </HStack>
                         </VStack>
                     </Card>
 
-                    {/* Body Measurements */}
+                    {/* Body Measurements / Profile Snapshot */}
                     <Card p={4} bg="white" rounded="xl" shadow={2}>
                         <VStack space={4}>
                             <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                                Body Measurements
+                                Profile Snapshot
                             </Text>
-
-                            <VStack space={3}>
-                                <HStack justifyContent="space-between" alignItems="center">
-                                    <Text fontSize="md" color="gray.600">Chest</Text>
-                                    <HStack alignItems="center" space={2}>
-                                        <Text fontSize="md" fontWeight="semibold">102 cm</Text>
-                                        <Text fontSize="sm" color="success.500">+2cm</Text>
+                            {fpLoading ? (
+                                <Skeleton h="20" />
+                            ) : profile ? (
+                                <VStack space={3}>
+                                    <HStack justifyContent="space-between">
+                                        <Text color="gray.600">Started</Text>
+                                        <Text fontWeight="semibold">{fmtDate(profile.startedOnISO)}</Text>
                                     </HStack>
-                                </HStack>
-
-                                <HStack justifyContent="space-between" alignItems="center">
-                                    <Text fontSize="md" color="gray.600">Waist</Text>
-                                    <HStack alignItems="center" space={2}>
-                                        <Text fontSize="md" fontWeight="semibold">85 cm</Text>
-                                        <Text fontSize="sm" color="success.500">-3cm</Text>
+                                    <HStack justifyContent="space-between">
+                                        <Text color="gray.600">Experience</Text>
+                                        <Text fontWeight="semibold">{profile.fitnessExperience ?? "—"}</Text>
                                     </HStack>
-                                </HStack>
-
-                                <HStack justifyContent="space-between" alignItems="center">
-                                    <Text fontSize="md" color="gray.600">Arms</Text>
-                                    <HStack alignItems="center" space={2}>
-                                        <Text fontSize="md" fontWeight="semibold">38 cm</Text>
-                                        <Text fontSize="sm" color="success.500">+1cm</Text>
+                                    <HStack justifyContent="space-between">
+                                        <Text color="gray.600">Activity</Text>
+                                        <Text fontWeight="semibold">{profile.activityLevel ?? "—"}</Text>
                                     </HStack>
-                                </HStack>
-                            </VStack>
-
-                            <Button variant="outline" colorScheme="primary">
-                                Update Measurements
-                            </Button>
+                                    <Divider />
+                                    <HStack justifyContent="space-between">
+                                        <Text color="gray.600">Goal Weight</Text>
+                                        <Text fontWeight="semibold">{profile.targetWeightKg ?? "—"} kg</Text>
+                                    </HStack>
+                                    <HStack justifyContent="space-between">
+                                        <Text color="gray.600">Target Date</Text>
+                                        <Text fontWeight="semibold">{fmtDate(profile.targetDateISO)}</Text>
+                                    </HStack>
+                                </VStack>
+                            ) : (
+                                <Text color="gray.500">No profile yet.</Text>
+                            )}
                         </VStack>
                     </Card>
 
-                    {/* Achievements */}
-                    <VStack space={3}>
-                        <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                            Achievements
-                        </Text>
-
-                        {achievements.map((achievement, index) => (
-                            <AchievementBadge key={index} {...achievement} />
-                        ))}
-                    </VStack>
-
-                    {/* Goals */}
-                    <Card p={4} bg="primary.50" rounded="xl" shadow={1}>
+                    {/* Recent Completed Sessions */}
+                    <Card p={4} bg="white" rounded="xl" shadow={2}>
                         <VStack space={3}>
-                            <HStack space={2} alignItems="center">
-                                <Text fontSize="lg">🎯</Text>
-                                <Text fontSize="lg" fontWeight="bold" color="primary.800">
-                                    Current Goals
-                                </Text>
-                            </HStack>
-
-                            <VStack space={2}>
-                                <HStack justifyContent="space-between" alignItems="center">
-                                    <Text fontSize="md" color="primary.700">
-                                        Lose 3.5kg more
-                                    </Text>
-                                    <Text fontSize="sm" color="primary.600">
-                                        60% complete
-                                    </Text>
-                                </HStack>
-                                <Progress value={60} colorScheme="primary" size="sm"/>
-
-                                <HStack justifyContent="space-between" alignItems="center" mt={2}>
-                                    <Text fontSize="md" color="primary.700">
-                                        Workout 5x per week
-                                    </Text>
-                                    <Text fontSize="sm" color="primary.600">
-                                        80% complete
-                                    </Text>
-                                </HStack>
-                                <Progress value={80} colorScheme="primary" size="sm"/>
-                            </VStack>
+                            <Text fontSize="lg" fontWeight="bold" color="gray.800">
+                                Recent Sessions (Completed)
+                            </Text>
+                            {sessLoading ? (
+                                <VStack space={2}>
+                                    <Skeleton h="12" />
+                                    <Skeleton h="12" />
+                                </VStack>
+                            ) : completedSessions.length ? (
+                                <VStack space={2}>
+                                    {completedSessions.map((s) => (
+                                        <Card key={s._id} p={3} bg="gray.50" rounded="lg">
+                                            <HStack justifyContent="space-between" alignItems="center">
+                                                <VStack>
+                                                    <Text fontWeight="semibold">✅ {s.type.replace("_", " ")}</Text>
+                                                    <Text fontSize="xs" color="gray.500">
+                                                        {fmtDate(s.scheduledStart)} — {fmtDate(s.scheduledEnd)}
+                                                    </Text>
+                                                </VStack>
+                                                <Badge colorScheme="success" variant="subtle">COMPLETED</Badge>
+                                            </HStack>
+                                        </Card>
+                                    ))}
+                                </VStack>
+                            ) : (
+                                <Text color="gray.500">No completed sessions yet.</Text>
+                            )}
                         </VStack>
                     </Card>
 
-                    {/* Bottom Spacing */}
-                    <Box h={6}/>
+                    <Box h={6} />
                 </VStack>
             </ScrollView>
 
             {/* Weight Entry Modal */}
             {isOpen ? (
-                <WeightEntryModal key="weight-modal" isOpen onClose={onClose} />
+                <WeightEntryModal
+                    key="weight-modal"
+                    isOpen
+                    onClose={onClose}
+                    onSave={handleSaveWeight}
+                    saving={saving}
+                />
             ) : null}
         </Box>
     );
 }
+
+
+const S = StyleSheet.create({
+    backdrop: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.35)",
+        justifyContent: "flex-end",
+    },
+    sheet: {
+        backgroundColor: "#fff",
+        padding: 16,
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+    },
+    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+    title: { fontSize: 18, fontWeight: "700", color: "#111" },
+    link: { color: "#2563eb", fontWeight: "600" },
+    field: { marginBottom: 12 },
+    label: { fontSize: 13, color: "#6b7280", marginBottom: 6 },
+    input: {
+        borderWidth: 1,
+        borderColor: "#e5e7eb",
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.OS === "ios" ? 10 : 8,
+        fontSize: 16,
+        color: "#111827",
+    },
+    error: { marginTop: 4, fontSize: 12, color: "#ef4444" },
+    row: { flexDirection: "row", alignItems: "center" },
+    flex: { flex: 1 },
+    btn: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 10,
+        marginLeft: 8,
+    },
+    btnGhost: { backgroundColor: "transparent" },
+    btnPrimary: { backgroundColor: "#111827" },
+    btnDisabled: { backgroundColor: "#9ca3af" },
+    btnTextPrimary: { color: "#fff", fontWeight: "700" },
+    btnTextGhost: { color: "#374151", fontWeight: "600" },
+});

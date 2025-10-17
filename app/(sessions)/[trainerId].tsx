@@ -17,6 +17,7 @@ import { FontAwesome5 } from "@expo/vector-icons";
 import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQuery } from "@apollo/client/react";
 import {
+    HourSlot,
     Session,
     SessionType,
     Subscription,
@@ -26,7 +27,7 @@ import {
     GET_ACTIVE_CLIENT_SUBSCRIPTIONS,
     GET_ME,
     GET_SESSIONS_FOR_TRAINER,
-    GET_TRAINER_PLANS,
+    GET_TRAINER_PLANS, GET_TRAINER_SLOTS_NEXT_7_DAYS,
 } from "@/graphql/queries";
 import {
     BOOK_TRAINING_SESSION,
@@ -77,6 +78,13 @@ function isFutureWithin7Days(d: Date) {
     const max = addMinutes(now, LOOKAHEAD_DAYS * 24 * 60);
     return d >= now && d <= max;
 }
+
+const formatYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = `${d.getMonth() + 1}`.padStart(2, "0");
+    const day = `${d.getDate()}`.padStart(2, "0");
+    return `${y}-${m}-${day}`;
+};
 
 /* ===================== Component ===================== */
 
@@ -163,6 +171,21 @@ export default function TrainerDetail() {
         }
     );
 
+    const {
+        data: slotsData,
+        loading: slotsLoading,
+        refetch: refetchSlots,
+    } = useQuery<{ trainerAvailableHourSlotsNext7Days: HourSlot[] }>(
+        GET_TRAINER_SLOTS_NEXT_7_DAYS,
+        {
+            variables: { trainerId },
+            skip: !trainerId,
+            notifyOnNetworkStatusChange: true,
+            fetchPolicy: "cache-first",
+            nextFetchPolicy: "cache-and-network",
+        }
+    );
+
     const [bookSession, { loading: booking }] =
         useMutation(BOOK_TRAINING_SESSION);
     const [createSubscription, { loading: creatingSub }] =
@@ -172,84 +195,42 @@ export default function TrainerDetail() {
 
     const next7Days = useMemo(() => daysArray(), []);
 
-    const sessionsNext7Days = useMemo(() => {
-        const all = sessData?.sessionsForTrainer ?? [];
-        const start = startOfDayLocal(new Date());
-        const end = addMinutes(start, LOOKAHEAD_DAYS * 24 * 60);
-        return all.filter((s) => {
-            if (s.status === "CANCELLED") return false;
-            const st = new Date(s.scheduledStart);
-            return st >= start && st <= end;
-        });
-    }, [sessData]);
+    // Flatten slots from API
+    const serverSlots: HourSlot[] =
+        slotsData?.trainerAvailableHourSlotsNext7Days ?? [];
 
-    // Build a slot grid for a date and compute availability
-    function buildDaySlots(day: Date): {
-        start: Date;
-        end: Date;
-        disabled: boolean;
-        reason?: string;
-    }[] {
-        const slots: {
-            start: Date;
-            end: Date;
-            disabled: boolean;
-            reason?: string;
-        }[] = [];
-        const dayStart = new Date(day);
-        dayStart.setHours(START_HOUR, 0, 0, 0);
-        const dayEnd = new Date(day);
-        dayEnd.setHours(END_HOUR, 0, 0, 0);
-
-        const now = new Date();
-
-        for (let t = new Date(dayStart); t < dayEnd; t = addMinutes(t, GRID_STEP_MIN)) {
-            const start = new Date(t);
-            const end = addMinutes(start, SLOT_DURATION_MIN);
-
-            if (!isFutureWithin7Days(start)) {
-                slots.push({
-                    start,
-                    end,
-                    disabled: true,
-                    reason: "Outside 7-day window",
-                });
-                continue;
-            }
-            if (start < now) {
-                slots.push({ start, end, disabled: true, reason: "Past time" });
-                continue;
-            }
-
-            const conflict = sessionsNext7Days.some((s) => {
-                const sStart = new Date(s.scheduledStart);
-                const sEnd = new Date(s.scheduledEnd);
-                return overlaps(start, end, sStart, sEnd);
-            });
-
-            if (conflict) {
-                slots.push({ start, end, disabled: true, reason: "Booked" });
-            } else {
-                slots.push({ start, end, disabled: false });
-            }
+// Count per day (key = "YYYY-MM-DD")
+    const countsByYmd = useMemo(() => {
+        const acc: Record<string, number> = {};
+        for (const s of serverSlots) {
+            acc[s.ymdLocal] = (acc[s.ymdLocal] || 0) + 1;
         }
-        return slots;
-    }
+        return acc;
+    }, [serverSlots]);
 
-    // Available count per day badge
+// UI needs counts by the 7 calendar chips
     const availableCounts = useMemo(() => {
         const counts: Record<string, number> = {};
-        next7Days.forEach((d) => {
-            const daySlots = buildDaySlots(d);
-            counts[d.toDateString()] = daySlots.filter((s) => !s.disabled).length;
-        });
+        for (const d of next7Days) {
+            const ymd = formatYMD(d);
+            counts[ymd] = countsByYmd[ymd] ?? 0;
+        }
         return counts;
-    }, [next7Days, sessionsNext7Days]);
+    }, [next7Days, countsByYmd]);
 
+// Slots for the selected day → map to shape expected by UI renderer
     const slotsForSelected = useMemo(
-        () => buildDaySlots(selectedDay),
-        [selectedDay, sessionsNext7Days]
+        () =>
+            serverSlots
+                .filter((s) => s.ymdLocal === formatYMD(selectedDay))
+                .map((s) => ({
+                    start: new Date(s.startUtc),
+                    end: new Date(s.endUtc),
+                    disabled: false as const,
+                })),
+        [serverSlots, selectedDay]
     );
+
 
     // Subscriptions filtered for this trainer (ACTIVE, PENDING, REQUESTED_CANCELLATION)
     const subsForTrainer = useMemo(() => {
@@ -470,7 +451,7 @@ export default function TrainerDetail() {
         );
     };
 
-    const loadingAny = meLoading || sessLoading || subLoading;
+    const loadingAny = meLoading || sessLoading || subLoading || slotsLoading;
 
     return (
         <Screen withHeader>
@@ -786,7 +767,8 @@ export default function TrainerDetail() {
                                 >
                                     {next7Days.map((d) => {
                                         const selected = sameDay(d, selectedDay);
-                                        const count = availableCounts[d.toDateString()] ?? 0;
+                                        const count = availableCounts[formatYMD(d)] ?? 0;
+
                                         return (
                                             <TouchableOpacity
                                                 key={d.toDateString()}

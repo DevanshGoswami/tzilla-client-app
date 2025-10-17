@@ -2,10 +2,25 @@ import { ApolloClient, InMemoryCache, createHttpLink, ApolloLink, type FetchResu
 import { setContext } from "@apollo/client/link/context";
 import * as SecureStore from "expo-secure-store";
 import { router } from "expo-router";
-import * as jwt_decode from "jwt-decode";
+import {jwtDecode} from "jwt-decode";
 import { onError } from "@apollo/client/link/error";
 import { Observable } from "@apollo/client";
 import {ENV} from "@/lib/env";
+
+// --- Token change event bus (notify app when tokens update) ---
+type Listener = () => void;
+const _tokenListeners = new Set<Listener>();
+
+export function onTokensChanged(fn: Listener) {
+  _tokenListeners.add(fn);
+  return () => _tokenListeners.delete(fn);
+}
+function _notifyTokensChanged() {
+  _tokenListeners.forEach((fn) => {
+    try { fn(); } catch {}
+  });
+}
+
 
 
 // Token management functions
@@ -17,35 +32,91 @@ export const tokenKeys = {
 export async function saveTokens(accessToken: string, refreshToken: string) {
   await SecureStore.setItemAsync(tokenKeys.access, accessToken);
   await SecureStore.setItemAsync(tokenKeys.refresh, refreshToken);
+  _notifyTokensChanged(); // <— NEW
 }
 
 export async function clearTokens() {
   await SecureStore.deleteItemAsync(tokenKeys.access);
   await SecureStore.deleteItemAsync(tokenKeys.refresh);
+  _notifyTokensChanged(); // <— NEW
 }
 
-export async function getTokens() {
+// --- Add near top (module scope) ---
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function getValidAccessToken(): Promise<string | null> {
+  const { accessToken, refreshToken } = await getRawTokens();
+  // If we have a non-expired access token, just use it
+  if (accessToken && !isTokenExpired(accessToken)) return accessToken;
+
+  // If we have no refresh token, we can't recover
+  if (!refreshToken) return null;
+
+  // Dedupe concurrent refreshes
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const newAccess = await refreshAccessToken();
+        return newAccess; // can be null if refresh failed
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
+// --- Replace your existing getTokens with these two functions ---
+
+async function getRawTokens() {
   const accessToken = await SecureStore.getItemAsync(tokenKeys.access);
   const refreshToken = await SecureStore.getItemAsync(tokenKeys.refresh);
   return { accessToken, refreshToken };
 }
 
+/**
+ * Always returns a valid, non-expired access token if possible.
+ * If the stored access token is expired but a refresh token exists,
+ * this will refresh and persist new tokens before returning.
+ *
+ * On failure, returns { accessToken: null, refreshToken: null }.
+ */
+export async function getTokens() {
+  try {
+    const { refreshToken } = await getRawTokens();
+
+    // Ensure we end up with a valid (refreshed if needed) access token
+    const validAccessToken = await getValidAccessToken();
+
+    if (!validAccessToken || !refreshToken) {
+      // Hard failure – clear to avoid using bad state elsewhere
+      await clearTokens();
+      return { accessToken: null, refreshToken: null };
+    }
+
+    return { accessToken: validAccessToken, refreshToken };
+  } catch (e) {
+    console.warn("getTokens failed:", e);
+    await clearTokens();
+    return { accessToken: null, refreshToken: null };
+  }
+}
+
+
 // Function to check if token is expired
 export function isTokenExpired(token: string): boolean {
   try {
-    const decoded: any = jwt_decode.jwtDecode(token);
+    const decoded: { exp?: number } = jwtDecode(token);
     const currentTime = Date.now() / 1000;
-    // Add a 30-second buffer to refresh slightly before expiry
-    return decoded.exp < currentTime + 30;
+    return (decoded.exp ?? 0) < currentTime + 30; // 30s buffer
   } catch {
     return true;
   }
 }
-
 // Function to refresh the access token
 export async function refreshAccessToken(): Promise<string | null> {
   try {
-    const { refreshToken } = await getTokens();
+    const { refreshToken } = await getRawTokens();
 
     if (!refreshToken) {
       throw new Error("No refresh token available");
@@ -91,7 +162,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     console.error("Token refresh failed:", error);
     // Clear tokens and redirect to login
     await clearTokens();
-    router.replace("/login");
+    router.replace("/(auth)/login");
     return null;
   }
 }
@@ -104,7 +175,7 @@ const httpLink = createHttpLink({
 // Auth link with token refresh logic
 const authLink = setContext(async (_, { headers }) => {
   try {
-    let { accessToken } = await getTokens();
+    let { accessToken } = await getRawTokens();
 
     // Check if token exists and is expired
     if (accessToken && isTokenExpired(accessToken)) {
@@ -211,8 +282,8 @@ const loggingLink = new ApolloLink((operation, forward) => {
 const link = ApolloLink.from([
   errorLink,
   authLink,
+  loggingLink,
   httpLink,
-  loggingLink
 ]);
 
 // Create Apollo Client
@@ -237,5 +308,5 @@ export async function logout() {
   // Clear Apollo cache
   await apollo.clearStore();
   // Navigate to login
-  router.replace("/login");
+  router.replace("/(auth)/login");
 }
