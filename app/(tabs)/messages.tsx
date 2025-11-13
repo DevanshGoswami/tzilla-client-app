@@ -205,14 +205,14 @@ export default function ChatList() {
     }, []);
 
     // me & trainers
-    const { data: meData, loading: meLoading, error: meError } = useQuery(GET_ME, { fetchPolicy: "cache-first" });
+    const { data: meData, loading: meLoading, error: meError } = useQuery(GET_ME, { fetchPolicy: "no-cache" });
     // @ts-ignore
     const me = meData?.getMe ?? meData?.me ?? meData?.user;
     const userId: string | undefined = me?._id || me?.id || me?.userId;
 
     const { data: trainersData, loading: trainersLoading, error: trainersError, refetch: refetchTrainers } = useQuery(
         GET_TRAINERS_FOR_CLIENT,
-        { variables: { pagination: { pageNumber: 1, pageSize: 50 } }, fetchPolicy: "cache-and-network", skip: !userId }
+        { variables: { pagination: { pageNumber: 1, pageSize: 50 } }, fetchPolicy: "no-cache", skip: !userId }
     );
     // @ts-ignore
     const trainers = (trainersData?.getTrainersForClient || []) as Array<{ _id: string; name: string; avatarUrl?: string }>;

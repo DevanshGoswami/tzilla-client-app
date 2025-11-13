@@ -16,6 +16,7 @@ export default function RootLayout() {
     const [token, setToken] = useState<string | null>(null);
     const [tokenLoading, setTokenLoading] = useState(true);
 
+
     // Initial read
     useEffect(() => {
         let mounted = true;

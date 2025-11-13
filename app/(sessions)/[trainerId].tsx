@@ -79,6 +79,8 @@ function isFutureWithin7Days(d: Date) {
     return d >= now && d <= max;
 }
 
+const isPast = (d: Date) => d.getTime() <= Date.now();
+
 const formatYMD = (d: Date) => {
     const y = d.getFullYear();
     const m = `${d.getMonth() + 1}`.padStart(2, "0");
@@ -181,8 +183,7 @@ export default function TrainerDetail() {
             variables: { trainerId },
             skip: !trainerId,
             notifyOnNetworkStatusChange: true,
-            fetchPolicy: "cache-first",
-            nextFetchPolicy: "cache-and-network",
+            fetchPolicy: "no-cache",
         }
     );
 
@@ -219,15 +220,21 @@ export default function TrainerDetail() {
     }, [next7Days, countsByYmd]);
 
 // Slots for the selected day → map to shape expected by UI renderer
+// Slots for the selected day → map to shape expected by UI renderer
     const slotsForSelected = useMemo(
         () =>
             serverSlots
                 .filter((s) => s.ymdLocal === formatYMD(selectedDay))
-                .map((s) => ({
-                    start: new Date(s.startUtc),
-                    end: new Date(s.endUtc),
-                    disabled: false as const,
-                })),
+                .map((s) => {
+                    const start = new Date(s.startUtc);
+                    const end = new Date(s.endUtc);
+
+                    // disable if start is in the past or outside 7-day lookahead
+                    const disabled =
+                        isPast(start) || !isFutureWithin7Days(start);
+
+                    return { start, end, disabled };
+                }),
         [serverSlots, selectedDay]
     );
 
@@ -289,9 +296,15 @@ export default function TrainerDetail() {
         d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
     const onPickSlot = (iso: string) => {
+        const d = new Date(iso);
+        if (isPast(d) || !isFutureWithin7Days(d)) {
+            Alert.alert("Unavailable", "You can’t book past or out-of-window slots.");
+            return;
+        }
         setPendingStartISO(iso);
         setConfirmOpen(true);
     };
+
 
     const onConfirmBooking = async () => {
         if (!pendingStartISO) return;
@@ -312,6 +325,13 @@ export default function TrainerDetail() {
 
         const start = new Date(pendingStartISO);
         const end = addMinutes(start, SLOT_DURATION_MIN);
+
+        if (isPast(start) || !isFutureWithin7Days(start)) {
+            Alert.alert("Unavailable", "Selected time is no longer bookable.");
+            setConfirmOpen(false);
+            setPendingStartISO("");
+            return;
+        }
 
         const input: any = {
             trainerId,

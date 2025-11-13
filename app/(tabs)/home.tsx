@@ -222,8 +222,7 @@ export default function Home() {
     const sess = useQuery(SESSIONS_FOR_CLIENT, {
         variables: { clientId: userId as string, pageNumber: 1, pageSize: 20 },
         skip: !userId,
-        fetchPolicy: "cache-and-network",
-        nextFetchPolicy: "cache-first",
+        fetchPolicy: "no-cache",
     });
 
     const pr = useQuery(PROGRESS_REPORT, {
@@ -234,8 +233,7 @@ export default function Home() {
                 toISO: isoDay(new Date()),
             },
         },
-        fetchPolicy: "cache-and-network",
-        nextFetchPolicy: "cache-first",
+        fetchPolicy: "no-cache",
     });
 
     const allSessions = (sess.data?.sessionsForClient ?? []).slice();

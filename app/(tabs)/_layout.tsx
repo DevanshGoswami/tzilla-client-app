@@ -1,6 +1,6 @@
 import { Tabs, router } from "expo-router";
 import { FontAwesome5 } from '@expo/vector-icons';
-import {ActivityIndicator, TouchableOpacity, View} from "react-native";
+import {ActivityIndicator, BackHandler, Platform, TouchableOpacity, View} from "react-native";
 import {useEnsureFitnessProfile} from "@/hooks/useEnsureFitnessProfile";
 import { Image } from "react-native";
 import logoLong from "../../assets/logo_long.png"; // adjust path if needed
@@ -17,6 +17,28 @@ export default function TabsLayout() {
             </View>
         );
     }
+
+    // Shim for libs still calling BackHandler.removeEventListener
+    // if (
+    //     Platform.OS === 'android' &&
+    //     typeof (BackHandler as any).removeEventListener !== 'function'
+    // ) {
+    //     const _add = BackHandler.addEventListener.bind(BackHandler);
+    //     const _map = new Map<(...args: any[]) => any, { remove: () => void }>();
+    //
+    //     BackHandler.addEventListener = (eventName: any, handler: any) => {
+    //         const sub = _add(eventName, handler);
+    //         _map.set(handler, sub);
+    //         return sub;
+    //     };
+    //
+    //     // @ts-ignore legacy signature
+    //     (BackHandler as any).removeEventListener = (_eventName: any, handler: any) => {
+    //         const sub = _map.get(handler);
+    //         if (sub && typeof sub.remove === 'function') sub.remove();
+    //         _map.delete(handler);
+    //     };
+    // }
 
     return (
         <Tabs

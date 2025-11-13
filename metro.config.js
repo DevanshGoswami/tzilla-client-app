@@ -1,4 +1,6 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
+
 
 const config = getDefaultConfig(__dirname);
 
@@ -12,6 +14,10 @@ config.resolver.blockList = [
     /node_modules\/native-base\/lib\/typescript\/.*\/test\/.*/,
     /.*\/test\/.*/,
 ];
+
+config.resolver.alias = {
+    '@': path.resolve(__dirname, './'),
+};
 
 module.exports = {
     ...config,

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Dimensions } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { KeyboardAvoidingView, Platform, FlatList, Alert, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, View, Image } from "react-native";
 import { Box, Text, HStack, VStack, Avatar, Badge, Button, Spinner, Center } from "native-base";
@@ -12,6 +12,7 @@ import { useQuery } from "@apollo/client/react";
 import { GET_ME } from "@/graphql/queries";
 import Screen from "@/components/ui/Screen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {ENV} from "@/lib/env";
 
 type ChatMessage = {
     _id: string;
@@ -70,6 +71,44 @@ export default function ChatRoom() {
     const initialScrolled = useRef(false);
     const nearBottomRef = useRef(true);
     const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
+
+    const [previewCache, setPreviewCache] = useState<Record<string, string>>({});
+    const previewRef = useRef(previewCache);
+    previewRef.current = previewCache;
+
+    const AWS_BASE = `${ENV.API_URL}/api/aws`; // 🔹 same base as your example page
+
+    async function getPreviewUrlForKey(key: string, accessToken: string): Promise<string> {
+        const res = await fetch(`${AWS_BASE}/media/${encodeURIComponent(key)}`, {
+            method: "GET",
+            headers: { Authorization: `Bearer ${accessToken}`, role: "client" },
+        });
+        if (!res.ok) throw new Error("Failed to get preview URL");
+        const data = await res.json();
+        return data.url as string;
+    }
+
+    const ensureDisplayUrl = useCallback(
+        async (keyOrUrl?: string | null) => {
+            if (!keyOrUrl) return "";
+            // if it already looks like a full URL, use it
+            if (/^https?:\/\//i.test(keyOrUrl)) return keyOrUrl;
+
+            const cached = previewRef.current[keyOrUrl];
+            if (cached) return cached;
+
+            if (!token) return ""; // will re-try when token available
+            try {
+                const signed = await getPreviewUrlForKey(keyOrUrl, token);
+                setPreviewCache((m) => ({ ...m, [keyOrUrl]: signed }));
+                return signed;
+            } catch {
+                return "";
+            }
+        },
+        [token]
+    );
+
 
     const rows = useMemo(() => {
         const sorted = [...messages].sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
@@ -197,23 +236,47 @@ export default function ChatRoom() {
                 Alert.alert("Not authenticated", "Please sign in again.");
                 return;
             }
-            const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9 });
+            const res = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                quality: 0.9,
+            });
             if (res.canceled || !res.assets?.length) return;
+
             const asset = res.assets[0];
             const uri = asset.uri;
             const mime = asset.mimeType || "image/jpeg";
 
-            const { uploadUrl, fileUrl } = await presignImage(token, mime);
+            // ⬇️ NOTE: we use key as media.url (per server contract)
+            const { uploadUrl, fileUrl, key } = await presignImage(token, mime);
+
             const blob = await (await fetch(uri)).blob();
             await putToS3(uploadUrl, blob, mime);
 
-            emit("sendMessage", { roomId, type: "image", media: { url: fileUrl, w: asset.width, h: asset.height, mime } }, (ack: any) => {
-                if (!ack?.success) Alert.alert("Send failed", ack?.error || "Unknown");
-            });
+            // Warm preview cache using the key (not fileUrl)
+            if (key) {
+                ensureDisplayUrl(key).catch(() => {});
+            }
+
+            emit(
+                "sendMessage",
+                {
+                    roomId,
+                    type: "image",
+                    media: {
+                        url: key,                 // ⬅️ send the S3 KEY here
+                        w: asset.width,
+                        h: asset.height,
+                        mime,
+                    },
+                },
+                (ack: any) => {
+                    if (!ack?.success) Alert.alert("Send failed", ack?.error || "Unknown");
+                }
+            );
         } catch (e: any) {
             Alert.alert("Image upload failed", e.message);
         }
-    }, [emit, roomId, token]);
+    }, [emit, roomId, token, ensureDisplayUrl]);
 
     // tell server when user is "looking at" this room
     useFocusEffect(
@@ -268,15 +331,54 @@ export default function ChatRoom() {
                 </HStack>
             );
         }
+
         const m: ChatMessage = item.msg;
         const mine = m.from === userId;
+
+        // --- Responsive image sizing (contain within bubble) ---
+        const winW = Dimensions.get("window").width;
+        const bubbleMaxW = Math.min(winW * 0.78, 360);
+        const maxImgW = bubbleMaxW - 16;
+        const rawW = Math.max(1, m.media?.w ?? 900);
+        const rawH = Math.max(1, m.media?.h ?? 1200);
+        const scale = Math.min(1, maxImgW / rawW);
+        const dispW = Math.max(120, Math.round(rawW * scale));
+        const dispH = Math.round(rawH * scale);
+
+        // ✅ resolve display URL (key -> signed URL), with cache + warmup
+        let imageDisplayUrl = "";
+        if (m.type === "image" && m.media?.url) {
+            if (/^https?:\/\//i.test(m.media.url)) {
+                imageDisplayUrl = m.media.url;               // already a URL
+            } else {
+                imageDisplayUrl = previewCache[m.media.url] || "";
+                if (!imageDisplayUrl) {
+                    // fire-and-forget warmup; rerenders when cache updates
+                    ensureDisplayUrl(m.media.url).catch(() => {});
+                }
+            }
+        }
+
         return (
             <HStack px={12} py={4} justifyContent={mine ? "flex-end" : "flex-start"}>
-                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
+                <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, { maxWidth: bubbleMaxW }]}>
                     {m.type === "text" ? (
                         <Text style={[styles.bubbleText, mine && { color: "white" }]}>{m.text}</Text>
                     ) : (
-                        <Image source={{ uri: m.media?.url }} style={styles.image} resizeMode="cover" />
+                        <View style={[styles.imageWrap, { width: dispW, height: dispH }]}>
+                            {imageDisplayUrl ? (
+                                <Image
+                                    source={{ uri: imageDisplayUrl }}
+                                    style={styles.image}
+                                    resizeMode="contain"
+                                />
+                            ) : (
+                                // tiny skeleton while signed URL is fetching
+                                <View style={[styles.image, { justifyContent: "center", alignItems: "center" }]}>
+                                    <Text style={{ fontSize: 12, color: "#9ca3af" }}>Loading…</Text>
+                                </View>
+                            )}
+                        </View>
                     )}
                     <Text style={[styles.time, mine && { color: "#dbeafe" }]}>
                         {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -285,6 +387,8 @@ export default function ChatRoom() {
             </HStack>
         );
     };
+
+
 
     const anyoneTyping = Object.entries(typingUsers).some(([uid, v]) => uid !== userId && v);
 
@@ -421,10 +525,19 @@ const styles = StyleSheet.create({
     },
     sendBtn: { width: 44, height: 44, marginLeft: 8, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "#3b82f6" },
     sendIcon: { fontSize: 18, color: "white" },
-    bubble: { maxWidth: "80%", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+    bubble: { maxWidth: "78%", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
     bubbleMine: { backgroundColor: "#3b82f6" },
     bubbleTheirs: { backgroundColor: "#e5e7eb" },
     bubbleText: { color: "#111827" },
     time: { marginTop: 4, fontSize: 11, color: "#6b7280" },
-    image: { width: 180, height: 240, borderRadius: 8, backgroundColor: "#ddd" },
+    imageWrap: {
+        borderRadius: 8,
+        overflow: "hidden",            // <-- clip any overflow
+        backgroundColor: "#f3f4f6",    // subtle grey behind contain
+        alignSelf: "flex-start",
+    },
+    image: {
+        width: "100%",
+        height: "100%",
+    },
 });
