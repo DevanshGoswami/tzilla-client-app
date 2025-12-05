@@ -256,3 +256,21 @@ export const GET_TRAINER_SLOTS_NEXT_7_DAYS = gql`
         }
     }
 `;
+
+export const GET_TRAINER_CONTACT = gql`
+    query GetTrainerContact($trainerId: ID!) {
+        trainer(trainerId: $trainerId) {
+            _id
+            userId
+            contact {
+                phone
+                addressLine1
+                addressLine2
+                city
+                state
+                country
+                postalCode
+            }
+        }
+    }
+`;

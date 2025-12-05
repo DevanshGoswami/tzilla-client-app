@@ -1,9 +1,9 @@
 import { Tabs, router } from "expo-router";
-import { FontAwesome5 } from '@expo/vector-icons';
-import {ActivityIndicator, BackHandler, Platform, TouchableOpacity, View} from "react-native";
-import {useEnsureFitnessProfile} from "@/hooks/useEnsureFitnessProfile";
-import { Image } from "react-native";
-import logoLong from "../../assets/logo_long.png"; // adjust path if needed
+import { Ionicons } from "@expo/vector-icons";
+import { ActivityIndicator, TouchableOpacity, View } from "react-native";
+import { useEnsureFitnessProfile } from "@/hooks/useEnsureFitnessProfile";
+import { Image, Text } from "react-native";
+import logoLong from "../../assets/logo_long.png";
 
 
 export default function TabsLayout() {
@@ -40,52 +40,72 @@ export default function TabsLayout() {
     //     };
     // }
 
+    const tabIcon =
+        (icon: keyof typeof Ionicons.glyphMap) =>
+        ({ color, focused }: { color: string; focused: boolean }) => (
+            <View
+                style={{
+                    padding: 8,
+                    borderRadius: 16,
+                    backgroundColor: focused ? "rgba(124,58,237,0.25)" : "transparent",
+                }}
+            >
+                <Ionicons name={icon} size={20} color={color} />
+            </View>
+        );
+
     return (
         <Tabs
             screenOptions={{
-                headerTitle: () => (
-                    <Image
-                        source={logoLong}
-                        style={{
-                            width: 140,
-                            height: 30,
-                            resizeMode: "contain",
-                        }}
-                    />
-                ),
-                tabBarActiveTintColor: "#111",
-                tabBarInactiveTintColor: "#999",
+                tabBarActiveTintColor: "#FFFFFF",
+                tabBarInactiveTintColor: "#7C7C8A",
                 tabBarStyle: {
-                    paddingBottom: 8,
-                    paddingTop: 8,
-                    height: 65,
-                    backgroundColor: '#fff',
+                    paddingBottom: 10,
+                    paddingTop: 10,
+                    height: 70,
+                    backgroundColor: "#0F111A",
                     borderTopWidth: 1,
-                    borderTopColor: '#f0f0f0',
+                    borderTopColor: "rgba(255,255,255,0.08)",
                 },
                 tabBarLabelStyle: {
                     fontSize: 11,
-                    fontWeight: '600',
-                    marginTop: 4,
+                    fontWeight: "600",
                 },
                 headerStyle: {
-                    backgroundColor: '#fff',
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.05,
-                    shadowRadius: 3,
-                    elevation: 5,
+                    backgroundColor: "#05060A",
                 },
-                headerTitleStyle: {
-                    fontWeight: 'bold',
-                    fontSize: 20,
-                },
+                headerShadowVisible: false,
+                headerTitle: () => (
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Image
+                            source={logoLong}
+                            style={{
+                                width: 120,
+                                height: 26,
+                                resizeMode: "contain",
+                            }}
+                        />
+                        <Text style={{ color: "#A5B0C9", fontSize: 10, marginLeft: 8 }}>
+                            TRAIN · FUEL · GROW
+                        </Text>
+                    </View>
+                ),
                 headerRight: () => (
                     <TouchableOpacity
-                        onPress={() => router.push('/profile')}
-                        style={{ marginRight: 15 }}
+                        onPress={() => router.push("/profile")}
+                        style={{
+                            marginRight: 16,
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.15)",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: "rgba(255,255,255,0.05)",
+                        }}
                     >
-                        <FontAwesome5 name="user-circle" size={24} color="#111" />
+                        <Ionicons name="person-outline" size={18} color="#E2E8F0" />
                     </TouchableOpacity>
                 ),
             }}
@@ -94,36 +114,28 @@ export default function TabsLayout() {
                 name="home"
                 options={{
                     title: "Home",
-                    tabBarIcon: ({ color, size, focused }) => (
-                        <FontAwesome5 name="home" size={size - 2} color={color} solid={focused} />
-                    ),
+                    tabBarIcon: tabIcon("home-outline"),
                 }}
             />
             <Tabs.Screen
                 name="workouts"
                 options={{
                     title: "Workouts",
-                    tabBarIcon: ({ color, size, focused }) => (
-                        <FontAwesome5 name="dumbbell" size={size - 4} color={color} solid={focused} />
-                    ),
+                    tabBarIcon: tabIcon("barbell-outline"),
                 }}
             />
             <Tabs.Screen
                 name="nutrition"
                 options={{
                     title: "Nutrition",
-                    tabBarIcon: ({ color, size, focused }) => (
-                        <FontAwesome5 name="apple-alt" size={size - 2} color={color} solid={focused} />
-                    ),
+                    tabBarIcon: tabIcon("restaurant-outline"),
                 }}
             />
             <Tabs.Screen
                 name="progress"
                 options={{
                     title: "Progress",
-                    tabBarIcon: ({ color, size, focused }) => (
-                        <FontAwesome5 name="chart-line" size={size - 3} color={color} solid={focused} />
-                    ),
+                    tabBarIcon: tabIcon("stats-chart-outline"),
                 }}
             />
 
@@ -132,9 +144,7 @@ export default function TabsLayout() {
                 name="sessions"
                 options={{
                     title: "Sessions",
-                    tabBarIcon: ({ color, size, focused }) => (
-                        <FontAwesome5 name="calendar-alt" size={size - 2} color={color} solid={focused} />
-                    ),
+                    tabBarIcon: tabIcon("calendar-outline"),
                 }}
             />
 
@@ -142,9 +152,7 @@ export default function TabsLayout() {
                 name="messages"
                 options={{
                     title: "Messages",
-                    tabBarIcon: ({ color, size, focused }) => (
-                        <FontAwesome5 name="comments" size={size - 2} color={color} solid={focused} />
-                    ),
+                    tabBarIcon: tabIcon("chatbubble-ellipses-outline"),
                 }}
             />
 

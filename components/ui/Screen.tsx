@@ -1,25 +1,31 @@
 // ui/Screen.tsx
 import React from "react";
-import {View, ViewProps, Platform, BackHandler} from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { View, ViewProps } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-type Props = ViewProps & { withHeader?: boolean };
+type Props = ViewProps & {
+  withHeader?: boolean;
+  backgroundColor?: string;
+  headerColor?: string;
+};
 
-export default function Screen({ children, style, withHeader = false, ...rest }: Props) {
-    const insets = useSafeAreaInsets();
+export default function Screen({
+  children,
+  style,
+  withHeader = false,
+  backgroundColor = "#f5f5f5",
+  headerColor,
+  ...rest
+}: Props) {
+  const insets = useSafeAreaInsets();
+  const headerBg = headerColor ?? backgroundColor;
 
-    // React.useEffect(() => {
-    //     const onBack = () => { /* ... */ return true; };
-    //     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
-    //     return () => sub.remove(); // ✅ new
-    // }, []);
-
-    return (
-        <View style={[{ flex: 1, backgroundColor: "#f5f5f5" }, style]} {...rest}>
-            {/* Top safe area for custom headers */}
-            {withHeader && <View style={{ height: insets.top, backgroundColor: "#fff" }} />}
-            {/* Content gets bottom inset so lists don’t hide behind system navbar */}
-            <View style={{ flex: 1, paddingBottom: insets.bottom }}>{children}</View>
-        </View>
-    );
+  return (
+    <View style={[{ flex: 1, backgroundColor }, style]} {...rest}>
+      {withHeader && (
+        <View style={{ height: insets.top, backgroundColor: headerBg }} />
+      )}
+      <View style={{ flex: 1, paddingBottom: insets.bottom }}>{children}</View>
+    </View>
+  );
 }

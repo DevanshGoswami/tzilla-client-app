@@ -1,693 +1,868 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
-    Box,
-    VStack,
-    HStack,
-    Text,
-    ScrollView,
-    Card,
-    Button,
-    Progress,
-    Badge,
-    Heading,
-    Input,
-    FormControl,
-    useDisclose,
-    Skeleton,
-    Divider,
-    Modal,
+  Box,
+  Button,
+  HStack,
+  Heading,
+  ScrollView as NBScrollView,
+  Skeleton,
+  Text,
+  VStack,
+  useDisclose,
 } from "native-base";
-import { useQuery, useMutation } from "@apollo/client/react";
-import { gql } from "@apollo/client";
-import { GET_ME } from "@/graphql/queries";
 import {
-    Modal as RNModal,
-    View,
-    // Text,
-    TextInput,
-    Pressable,
-    Platform,
-    StyleSheet, KeyboardTypeOptions,
+  KeyboardAvoidingView,
+  Modal as RNModal,
+  Platform,
+  Pressable,
+  ScrollView as RNScrollView,
+  TextInput,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { useMutation, useQuery } from "@apollo/client/react";
+import { gql } from "@apollo/client";
+import { useFocusEffect } from "@react-navigation/native";
+import Screen from "@/components/ui/Screen";
+import { GET_ME } from "@/graphql/queries";
 import WeightLineChartSvg from "@/components/WeightLineChart";
 
-/* ================================
+/* =================================
    GraphQL
-================================ */
+================================= */
 const FITNESS_PROFILE = gql`
-    query FitnessProfile($userId: ID!) {
-        fitnessProfile(userId: $userId) {
-            userId
-            profile {
-                name
-                age
-                gender
-                heightCm
-                currentWeightKg
-                activityLevel
-                goal
-                targetWeightKg
-                targetDateISO
-                fitnessExperience
-                latestMeasurements { neckCm waistCm hipCm }
-                computed {
-                    bmi
-                    bmiCategory
-                    bmr
-                    tdee
-                    estimatedBodyFatPct
-                    recommendedCaloriesPerDay
-                    summaries { caloriesLine bmiLine }
-                }
-                startedOnISO
-                progressCount
-                weightDeltaKgFromStart
-            }
-            createdAt
-            updatedAt
+  query FitnessProfile($userId: ID!) {
+    fitnessProfile(userId: $userId) {
+      userId
+      profile {
+        name
+        age
+        gender
+        heightCm
+        currentWeightKg
+        activityLevel
+        goal
+        targetWeightKg
+        targetDateISO
+        fitnessExperience
+        latestMeasurements {
+          neckCm
+          waistCm
+          hipCm
         }
+        computed {
+          bmi
+          bmiCategory
+          tdee
+          estimatedBodyFatPct
+          recommendedCaloriesPerDay
+        }
+        startedOnISO
+        progressCount
+        weightDeltaKgFromStart
+      }
     }
+  }
 `;
 
 const PROGRESS_REPORT = gql`
-    query ProgressReport($userId: ID!, $range: ProgressRange) {
-        progressReport(userId: $userId, range: $range) {
-            id
-            dateISO
-            weightKg
-            bmi
-            tdee
-            caloriesRecommended
-            createdAt
-        }
+  query ProgressReport($userId: ID!, $range: ProgressRange) {
+    progressReport(userId: $userId, range: $range) {
+      id
+      dateISO
+      weightKg
+      bmi
+      createdAt
     }
+  }
 `;
 
 const SESSIONS_FOR_CLIENT = gql`
-    query SessionsForClient($clientId: ID!, $pageNumber: Int!, $pageSize: Int!) {
-        sessionsForClient(clientId: $clientId, pagination: { pageNumber: $pageNumber, pageSize: $pageSize }) {
-            _id
-            type
-            status
-            scheduledStart
-            scheduledEnd
-            meetingLink
-            location { city state country }
-            createdAt
-            updatedAt
-        }
+  query SessionsForClient($clientId: ID!, $pageNumber: Int!, $pageSize: Int!) {
+    sessionsForClient(
+      clientId: $clientId
+      pagination: { pageNumber: $pageNumber, pageSize: $pageSize }
+    ) {
+      _id
+      type
+      status
+      scheduledStart
+      scheduledEnd
+      createdAt
     }
+  }
 `;
 
 const ADD_PROGRESS = gql`
-    mutation AddProgress($input: AddProgressInput!) {
-        addProgress(input: $input) {
-            userId
-            profile { currentWeightKg }
-            progress {
-                id
-                dateISO
-                weightKg
-                bmi
-                createdAt
-            }
-        }
+  mutation AddProgress($input: AddProgressInput!) {
+    addProgress(input: $input) {
+      userId
+      profile {
+        currentWeightKg
+      }
+      progress {
+        id
+        dateISO
+        weightKg
+        bmi
+        createdAt
+      }
     }
+  }
 `;
 
-/* ================================
-   Helpers
-================================ */
-function parseDateSafe(input?: string | number | null): Date | null {
-    if (!input) return null;
-    if (typeof input === "number" || /^\d+$/.test(String(input))) {
-        const s = String(input);
-        let ms = Number(s);
-        if (s.length >= 16) ms = ms / 1_000_000; // ns -> ms
-        else if (s.length >= 13) ms = ms;        // ms
-        else if (s.length >= 10) ms = ms * 1000; // s -> ms
-        const d = new Date(ms);
-        return isNaN(d.getTime()) ? null : d;
+/* =================================
+   Theme helpers
+================================= */
+const THEME_BG = "#05060B";
+const CARD_BG = "rgba(15,17,26,0.95)";
+const BORDER_COLOR = "rgba(255,255,255,0.08)";
+const ACCENT = "#C4B5FD";
+const ACCENT_SOLID = "#7C3AED";
+
+const INPUT_PLACEHOLDER = "rgba(203,213,225,0.7)";
+const INPUT_STYLE = {
+  borderWidth: 1,
+  borderColor: BORDER_COLOR,
+  borderRadius: 18,
+  paddingHorizontal: 16,
+  paddingVertical: Platform.OS === "ios" ? 12 : 8,
+  backgroundColor: "rgba(255,255,255,0.05)",
+  color: "white",
+  fontSize: 16,
+} as const;
+
+const GlassCard = ({
+  children,
+  gradient,
+  ...rest
+}: {
+  children: React.ReactNode;
+  gradient?: boolean;
+  [key: string]: any;
+}) => (
+  <Box
+    p={4}
+    rounded="2xl"
+    borderWidth={1}
+    borderColor={BORDER_COLOR}
+    bg={
+      gradient
+        ? {
+            linearGradient: {
+              colors: ["rgba(124,58,237,0.25)", "rgba(5,6,11,0.95)"],
+              start: [0, 0],
+              end: [1, 1],
+            },
+          }
+        : CARD_BG
     }
-    const d = new Date(String(input));
+    shadow={2}
+    {...rest}
+  >
+    {children}
+  </Box>
+);
+
+const InfoChip = ({
+  icon,
+  label,
+  color = ACCENT,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color?: string;
+}) => (
+  <HStack
+    px={3}
+    py={1.5}
+    space={2}
+    alignItems="center"
+    rounded="full"
+    borderWidth={1}
+    borderColor={BORDER_COLOR}
+    bg="rgba(255,255,255,0.05)"
+  >
+    <Ionicons name={icon} size={14} color={color} />
+    <Text fontSize="xs" color="coolGray.200">
+      {label}
+    </Text>
+  </HStack>
+);
+
+const MetricCard = ({
+  title,
+  value,
+  subtitle,
+  icon,
+}: {
+  title: string;
+  value: string;
+  subtitle?: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}) => (
+  <GlassCard flex={1}>
+    <HStack justifyContent="space-between" alignItems="center" mb={3}>
+      <Text fontSize="xs" color="coolGray.400">
+        {title}
+      </Text>
+      <Box
+        rounded="full"
+        p={2}
+        borderWidth={1}
+        borderColor={BORDER_COLOR}
+        bg="rgba(124,58,237,0.15)"
+      >
+        <Ionicons name={icon} size={16} color={ACCENT} />
+      </Box>
+    </HStack>
+    <Text fontSize="2xl" fontWeight="bold" color="white">
+      {value}
+    </Text>
+    {subtitle ? (
+      <Text fontSize="xs" color="coolGray.400" mt={1}>
+        {subtitle}
+      </Text>
+    ) : null}
+  </GlassCard>
+);
+
+function parseDateSafe(input?: string | number | null): Date | null {
+  if (!input) return null;
+  if (typeof input === "number" || /^\d+$/.test(String(input))) {
+    const s = String(input);
+    let ms = Number(s);
+    if (s.length >= 16) ms = ms / 1_000_000;
+    else if (s.length >= 13) ms = ms;
+    else if (s.length >= 10) ms = ms * 1000;
+    const d = new Date(ms);
     return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(String(input));
+  return isNaN(d.getTime()) ? null : d;
 }
+
 const fmtDate = (input?: string | number | null) => {
-    const d = parseDateSafe(input);
-    return d ? d.toLocaleDateString() : "—";
+  const d = parseDateSafe(input);
+  return d ? d.toLocaleDateString() : "—";
 };
 
-/* ================================
-   Small UI bits
-================================ */
-function StatCard({
-                      title,
-                      currentValue,
-                      previousValue,
-                      unit,
-                      icon,
-                      colorScheme = "primary",
-                      trend,
-                  }: {
-    title: string;
-    currentValue: string | number;
-    previousValue?: string | number;
-    unit?: string;
-    icon: string;
-    colorScheme?: string;
-    trend?: "up" | "down" | "stable";
-}) {
-    const trendIcon = trend === "up" ? "📈" : trend === "down" ? "📉" : trend === "stable" ? "➖" : "";
-    const trendColor =
-        trend === "up" ? "success.500" : trend === "down" ? "red.500" : trend === "stable" ? "gray.500" : "gray.500";
-
-    return (
-        <Card flex={1} p={4} bg="white" rounded="xl" shadow={2}>
-            <VStack space={2}>
-                <HStack justifyContent="space-between" alignItems="center">
-                    <Text fontSize="sm" color="gray.500" fontWeight="medium">{title}</Text>
-                    <Text fontSize="xl">{icon}</Text>
-                </HStack>
-                <HStack alignItems="baseline" space={1}>
-                    <Text fontSize="2xl" fontWeight="bold" color={`${colorScheme}.600`}>
-                        {currentValue}
-                    </Text>
-                    {unit ? <Text fontSize="sm" color="gray.400">{unit}</Text> : null}
-                </HStack>
-                {previousValue != null && trend && (
-                    <Text fontSize="xs" color={trendColor}>
-                        {trendIcon} vs last: {previousValue}{unit ? ` ${unit}` : ""}
-                    </Text>
-                )}
-            </VStack>
-        </Card>
-    );
-}
-
-/* ================================
-   Weight Entry Modal
-================================ */
-// ⬇️ replace the whole WeightEntryModal with this
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+/* =================================
+   Weight Entry Modal
+================================= */
 type SavePayload = {
-    weightKg: number;
-    dateISO: string;
-    measurements?: { neckCm?: number; waistCm?: number; hipCm?: number };
-    notes?: string;
+  weightKg: number;
+  dateISO: string;
+  measurements?: { neckCm?: number; waistCm?: number; hipCm?: number };
+  notes?: string;
 };
 
-export function WeightEntryModal({
-                                     isOpen,
-                                     onClose,
-                                     onSave,
-                                     saving,
-                                 }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onSave: (payload: SavePayload) => void;
-    saving?: boolean;
+function WeightEntryModal({
+  isOpen,
+  onClose,
+  onSave,
+  saving,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (payload: SavePayload) => void;
+  saving?: boolean;
 }) {
-    const [weight, setWeight] = useState("");
-    const [dateISO, setDateISO] = useState(todayISO());
-    const [neck, setNeck] = useState("");
-    const [waist, setWaist] = useState("");
-    const [hip, setHip] = useState("");
-    const [notes, setNotes] = useState("");
+  const [weight, setWeight] = useState("");
+  const [dateISO, setDateISO] = useState(todayISO());
+  const [neck, setNeck] = useState("");
+  const [waist, setWaist] = useState("");
+  const [hip, setHip] = useState("");
+  const [notes, setNotes] = useState("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pickerDate, setPickerDate] = useState<Date | null>(null);
 
-    const sanitizeDecimal = (s: string) =>
-        s.replace(",", ".").replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
+  const decimalKeyboard = Platform.OS === "ios" ? "decimal-pad" : "numeric";
+  const sanitize = (s: string) =>
+    s.replace(",", ".").replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
 
-    const ISO_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-    const isValidISO = (v: string) => ISO_REGEX.test(v) && !Number.isNaN(new Date(v).getTime());
-    const parsedWeight = Number(weight);
+  const parsedWeight = Number(weight);
+  const canSave =
+    Number.isFinite(parsedWeight) && parsedWeight > 0 && dateISO.length === 10;
 
-    const toNum = (v: string) => {
-        const n = Number(v);
-        return Number.isFinite(n) && n > 0 ? n : undefined;
-    };
+  const asNumber = (s: string) => {
+    const n = Number(s);
+    return Number.isFinite(n) ? n : undefined;
+  };
 
-    const canSave =
-        Number.isFinite(parsedWeight) && parsedWeight > 0 && (!dateISO || isValidISO(dateISO));
-
-    const decimalKeyboard: KeyboardTypeOptions =
-        Platform.OS === "ios" ? "decimal-pad" : "numeric";
-
-    return (
-        <RNModal visible={isOpen} transparent animationType="slide" onRequestClose={onClose}>
-            <View style={S.backdrop}>
-                <View style={S.sheet}>
-                    <View style={S.header}>
-                        <Text style={S.title}>Log Progress</Text>
-                        <Pressable onPress={onClose}><Text style={S.link}>Close</Text></Pressable>
-                    </View>
-
-                    <View style={S.field}>
-                        <Text style={S.label}>Weight (kg)</Text>
-                        <TextInput
-                            value={weight}
-                            onChangeText={(t) => setWeight(sanitizeDecimal(t))}
-                            keyboardType={decimalKeyboard}
-                            placeholder="e.g., 75.5"
-                            style={S.input}
-                        />
-                    </View>
-
-                    <View style={S.field}>
-                        <Text style={S.label}>Date (YYYY-MM-DD)</Text>
-                        <TextInput
-                            value={dateISO}
-                            onChangeText={setDateISO}
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            placeholder={todayISO()}
-                            style={S.input}
-                        />
-                        {!isValidISO(dateISO) ? (
-                            <Text style={S.error}>Please use YYYY-MM-DD (e.g., {todayISO()}).</Text>
-                        ) : null}
-                    </View>
-
-                    <View style={[S.row, { gap: 12 }]}>
-                        <View style={[S.field, S.flex]}>
-                            <Text style={S.label}>Neck (cm)</Text>
-                            <TextInput
-                                value={neck}
-                                onChangeText={(t) => setNeck(sanitizeDecimal(t))}
-                                keyboardType={decimalKeyboard}
-                                placeholder="e.g., 38"
-                                style={S.input}
-                            />
-                        </View>
-                        <View style={[S.field, S.flex]}>
-                            <Text style={S.label}>Waist (cm)</Text>
-                            <TextInput
-                                value={waist}
-                                onChangeText={(t) => setWaist(sanitizeDecimal(t))}
-                                keyboardType={decimalKeyboard}
-                                placeholder="e.g., 85"
-                                style={S.input}
-                            />
-                        </View>
-                        <View style={[S.field, S.flex]}>
-                            <Text style={S.label}>Hip (cm)</Text>
-                            <TextInput
-                                value={hip}
-                                onChangeText={(t) => setHip(sanitizeDecimal(t))}
-                                keyboardType={decimalKeyboard}
-                                placeholder="e.g., 100"
-                                style={S.input}
-                            />
-                        </View>
-                    </View>
-
-                    <View style={S.field}>
-                        <Text style={S.label}>Notes</Text>
-                        <TextInput
-                            value={notes}
-                            onChangeText={setNotes}
-                            placeholder="Anything notable about today’s weigh-in"
-                            style={[S.input, { height: 44 }]}
-                        />
-                    </View>
-
-                    <View style={[S.row, { justifyContent: "flex-end", marginTop: 8 }]}>
-                        <Pressable onPress={onClose} style={[S.btn, S.btnGhost]}>
-                            <Text style={S.btnTextGhost}>Cancel</Text>
-                        </Pressable>
-                        <Pressable
-                            disabled={!canSave || !!saving}
-                            onPress={() =>
-                                onSave({
-                                    weightKg: parsedWeight,
-                                    dateISO: isValidISO(dateISO) ? dateISO : todayISO(),
-                                    measurements: { neckCm: toNum(neck), waistCm: toNum(waist), hipCm: toNum(hip) },
-                                    notes: notes.trim() ? notes.trim() : undefined,
-                                })
-                            }
-                            style={[S.btn, !canSave || saving ? S.btnDisabled : S.btnPrimary]}
-                        >
-                            <Text style={S.btnTextPrimary}>{saving ? "Saving..." : "Save"}</Text>
-                        </Pressable>
-                    </View>
-                </View>
-            </View>
-        </RNModal>
-    );
-}
-
-
-/* ================================
-   Screen
-================================ */
-export default function ProgressSection() {
-    const { data: meData } = useQuery(GET_ME);
-    // @ts-ignore
-    const userId: string | undefined = meData?.user?._id;
-
-    const { isOpen, onOpen, onClose } = useDisclose();
-
-    // Profile
-    const { data: fpData, loading: fpLoading } = useQuery(FITNESS_PROFILE, {
-        variables: { userId: userId as string },
-        skip: !userId,
-        fetchPolicy: "no-cache",
-        nextFetchPolicy: "no-cache",
-    });
-
-    // Progress last 90 days (enough to compute trends safely)
-    const { data: prData, loading: prLoading, refetch: refetchProgress } = useQuery(PROGRESS_REPORT, {
-        variables: { userId: userId as string, range: { /* fromISO optional */ } },
-        skip: !userId,
-        fetchPolicy: "no-cache",
-        nextFetchPolicy: "no-cache",
-    });
-
-    // Sessions (just show completed)
-    const { data: sessData, loading: sessLoading } = useQuery(SESSIONS_FOR_CLIENT, {
-        variables: { clientId: userId as string, pageNumber: 1, pageSize: 50 },
-        skip: !userId,
-        fetchPolicy: "no-cache",
-        nextFetchPolicy: "no-cache",
-    });
-
-    // Add progress mutation
-    const [addProgress, { loading: saving }] = useMutation(ADD_PROGRESS, {
-        onCompleted: () => {
-            onClose();
-            refetchProgress();
-        },
-    });
-
-    // Derive stats
-    // @ts-ignore
-    const profile = fpData?.fitnessProfile?.profile;
-    // @ts-ignore
-    const progress = (prData?.progressReport ?? []).slice().sort((a: any, b: any) => {
-        const da = parseDateSafe(a.dateISO)?.getTime() ?? 0;
-        const db = parseDateSafe(b.dateISO)?.getTime() ?? 0;
-        return db - da;
-    });
-
-    const latest = progress[0];
-    const prev = progress[1];
-
-    const currentWeight = latest?.weightKg ?? profile?.currentWeightKg ?? null;
-    const previousWeight = prev?.weightKg ?? null;
-    const weightTrend: "up" | "down" | "stable" | undefined =
-        previousWeight == null || currentWeight == null
-            ? undefined
-            : currentWeight < previousWeight
-                ? "down"
-                : currentWeight > previousWeight
-                    ? "up"
-                    : "stable";
-
-    const currentBmi = latest?.bmi ?? profile?.computed?.bmi ?? null;
-    const previousBmi = prev?.bmi ?? null;
-    const bmiTrend: "up" | "down" | "stable" | undefined =
-        previousBmi == null || currentBmi == null
-            ? undefined
-            : currentBmi < previousBmi
-                ? "down"
-                : currentBmi > previousBmi
-                    ? "up"
-                    : "stable";
-
-    // Completed sessions
-    const completedSessions = useMemo(() => {
-        // @ts-ignore
-        const list: any[] = sessData?.sessionsForClient ?? [];
-        return list
-            .filter((s) => s.status === "COMPLETED")
-            .sort((a, b) => {
-                const da = parseDateSafe(a.scheduledStart)?.getTime() ?? 0;
-                const db = parseDateSafe(b.scheduledStart)?.getTime() ?? 0;
-                return db - da;
-            })
-            .slice(0, 5);
-    }, [sessData]);
-
-    const handleSaveWeight = (payload: {
-        weightKg: number;
-        dateISO: string;
-        measurements?: { neckCm?: number; waistCm?: number; hipCm?: number };
-        notes?: string;
-    }) => {
-        if (!userId) return;
-        addProgress({
-            variables: {
-                input: {
-                    userId,
-                    dateISO: payload.dateISO,
-                    weightKg: payload.weightKg,
-                    measurements: payload.measurements,
-                    notes: payload.notes,
-                },
-            },
-        });
-    };
-
-    const loadingAny = fpLoading || prLoading || sessLoading;
-
-    return (
-        <Box flex={1} bg="gray.50" safeAreaTop>
-            <ScrollView flex={1} showsVerticalScrollIndicator={false}>
-                <VStack space={6} p={6}>
-                    {/* Header */}
-                    <VStack space={1}>
-                        <Heading size="lg" color="gray.800">
-                            Your Progress
-                        </Heading>
-                        <HStack alignItems="center" justifyContent="space-between">
-                            <Text color="gray.500" fontSize="md">
-                                Track your fitness journey
-                            </Text>
-                            {profile ? (
-                                <Badge colorScheme="primary" variant="subtle">
-                                    {profile?.name ?? "You"}
-                                </Badge>
-                            ) : null}
-                        </HStack>
-                    </VStack>
-
-                    {/* Quick Stats */}
-                    <VStack space={3}>
-                        <HStack justifyContent="space-between" alignItems="center">
-                            <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                                This Week
-                            </Text>
-                            <Button size="sm" onPress={onOpen} colorScheme="primary">
-                                + Log Weight
-                            </Button>
-                        </HStack>
-
-                        {loadingAny ? (
-                            <HStack space={3}>
-                                <Card flex={1} p={4}><Skeleton h="24" /></Card>
-                                <Card flex={1} p={4}><Skeleton h="24" /></Card>
-                            </HStack>
-                        ) : (
-                            <>
-                                <HStack space={3}>
-                                    <StatCard
-                                        title="Current Weight"
-                                        currentValue={currentWeight != null ? currentWeight.toFixed(1) : "—"}
-                                        previousValue={previousWeight != null ? previousWeight.toFixed(1) : undefined}
-                                        unit="kg"
-                                        icon="⚖️"
-                                        colorScheme="info"
-                                        trend={weightTrend}
-                                    />
-                                    <StatCard
-                                        title="BMI"
-                                        currentValue={currentBmi != null ? currentBmi.toFixed(1) : "—"}
-                                        previousValue={previousBmi != null ? previousBmi.toFixed(1) : undefined}
-                                        unit=""
-                                        icon="📊"
-                                        colorScheme="success"
-                                        trend={bmiTrend}
-                                    />
-                                </HStack>
-
-                                <HStack space={3}>
-                                    <StatCard
-                                        title="TDEE"
-                                        currentValue={profile?.computed?.tdee ?? "—"}
-                                        unit="kcal"
-                                        icon="🔥"
-                                        colorScheme="orange"
-                                    />
-                                    <StatCard
-                                        title="Daily Target"
-                                        currentValue={profile?.computed?.recommendedCaloriesPerDay ?? "—"}
-                                        unit="kcal"
-                                        icon="🎯"
-                                        colorScheme="purple"
-                                    />
-                                </HStack>
-                            </>
-                        )}
-                    </VStack>
-
-                    {/* Weight Trend (placeholder for chart) */}
-                    <Card p={4} bg="white" rounded="xl" shadow={2}>
-                        <VStack space={4}>
-                            <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                                Weight Trend (Last 90 Days)
-                            </Text>
-
-                            <WeightLineChartSvg
-                                progress={progress /* your sorted array from progressReport */}
-                                height={260}
-                                width={360}   // adjust or compute from window width
-                            />
-
-                            <HStack justifyContent="space-between">
-                                <VStack alignItems="center">
-                                    <Text fontSize="sm" color="gray.500">From</Text>
-                                    <Text fontSize="md" fontWeight="semibold">
-                                        {fmtDate(progress[progress.length - 1]?.dateISO)}
-                                    </Text>
-                                </VStack>
-                                <VStack alignItems="center">
-                                    <Text fontSize="sm" color="gray.500">To</Text>
-                                    <Text fontSize="md" fontWeight="semibold">
-                                        {fmtDate(progress[0]?.dateISO)}
-                                    </Text>
-                                </VStack>
-                            </HStack>
-                        </VStack>
-                    </Card>
-
-                    {/* Body Measurements / Profile Snapshot */}
-                    <Card p={4} bg="white" rounded="xl" shadow={2}>
-                        <VStack space={4}>
-                            <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                                Profile Snapshot
-                            </Text>
-                            {fpLoading ? (
-                                <Skeleton h="20" />
-                            ) : profile ? (
-                                <VStack space={3}>
-                                    <HStack justifyContent="space-between">
-                                        <Text color="gray.600">Started</Text>
-                                        <Text fontWeight="semibold">{fmtDate(profile.startedOnISO)}</Text>
-                                    </HStack>
-                                    <HStack justifyContent="space-between">
-                                        <Text color="gray.600">Experience</Text>
-                                        <Text fontWeight="semibold">{profile.fitnessExperience ?? "—"}</Text>
-                                    </HStack>
-                                    <HStack justifyContent="space-between">
-                                        <Text color="gray.600">Activity</Text>
-                                        <Text fontWeight="semibold">{profile.activityLevel ?? "—"}</Text>
-                                    </HStack>
-                                    <Divider />
-                                    <HStack justifyContent="space-between">
-                                        <Text color="gray.600">Goal Weight</Text>
-                                        <Text fontWeight="semibold">{profile.targetWeightKg ?? "—"} kg</Text>
-                                    </HStack>
-                                    <HStack justifyContent="space-between">
-                                        <Text color="gray.600">Target Date</Text>
-                                        <Text fontWeight="semibold">{fmtDate(profile.targetDateISO)}</Text>
-                                    </HStack>
-                                </VStack>
-                            ) : (
-                                <Text color="gray.500">No profile yet.</Text>
-                            )}
-                        </VStack>
-                    </Card>
-
-                    {/* Recent Completed Sessions */}
-                    <Card p={4} bg="white" rounded="xl" shadow={2}>
-                        <VStack space={3}>
-                            <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                                Recent Sessions (Completed)
-                            </Text>
-                            {sessLoading ? (
-                                <VStack space={2}>
-                                    <Skeleton h="12" />
-                                    <Skeleton h="12" />
-                                </VStack>
-                            ) : completedSessions.length ? (
-                                <VStack space={2}>
-                                    {completedSessions.map((s) => (
-                                        <Card key={s._id} p={3} bg="gray.50" rounded="lg">
-                                            <HStack justifyContent="space-between" alignItems="center">
-                                                <VStack>
-                                                    <Text fontWeight="semibold">✅ {s.type.replace("_", " ")}</Text>
-                                                    <Text fontSize="xs" color="gray.500">
-                                                        {fmtDate(s.scheduledStart)} — {fmtDate(s.scheduledEnd)}
-                                                    </Text>
-                                                </VStack>
-                                                <Badge colorScheme="success" variant="subtle">COMPLETED</Badge>
-                                            </HStack>
-                                        </Card>
-                                    ))}
-                                </VStack>
-                            ) : (
-                                <Text color="gray.500">No completed sessions yet.</Text>
-                            )}
-                        </VStack>
-                    </Card>
-
-                    <Box h={6} />
+  return (
+    <RNModal
+      visible={isOpen}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Box flex={1} bg="rgba(4,5,10,0.92)">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
+        >
+          <RNScrollView
+            flex={1}
+            contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <VStack space={3} alignItems="center" mb={3}>
+              <Ionicons name="fitness-outline" size={32} color={ACCENT} />
+              <Text fontSize="2xl" fontWeight="bold" color="white">
+                Log progress
+              </Text>
+              <Text fontSize="xs" color="coolGray.400" textAlign="center">
+                Capture today’s weight and measurements
+              </Text>
+            </VStack>
+            <GlassCard>
+              <VStack space={4}>
+                <VStack space={2}>
+                  <Text fontSize="xs" color="coolGray.400">
+                    Weight (kg)
+                  </Text>
+                  <TextInput
+                    value={weight}
+                    onChangeText={(t) => setWeight(sanitize(t))}
+                    keyboardType={decimalKeyboard}
+                    placeholder="e.g., 72.4"
+                    placeholderTextColor={INPUT_PLACEHOLDER}
+                    style={INPUT_STYLE}
+                  />
                 </VStack>
-            </ScrollView>
+                <VStack space={2}>
+                  <Text fontSize="xs" color="coolGray.400">
+                    Date
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      setPickerDate(parseDateSafe(dateISO) ?? new Date());
+                      setShowDatePicker(true);
+                    }}
+                    style={[
+                      INPUT_STYLE,
+                      {
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: "white", fontWeight: "600" }}>
+                      {dateISO || todayISO()}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={18} color={ACCENT} />
+                  </Pressable>
+                  {showDatePicker && (
+                    <RNModal
+                      transparent
+                      animationType="fade"
+                      onRequestClose={() => setShowDatePicker(false)}
+                    >
+                      <Box flex={1} bg="rgba(0,0,0,0.6)" justifyContent="center" px={6}>
+                        <GlassCard>
+                          <VStack space={4}>
+                            <Text fontSize="md" fontWeight="bold" color="white">
+                              Pick a date
+                            </Text>
+                            <DateTimePicker
+                              value={pickerDate ?? new Date()}
+                              mode="date"
+                              display={Platform.OS === "ios" ? "spinner" : "default"}
+                              maximumDate={new Date()}
+                              onChange={(_, selectedDate) => {
+                                if (selectedDate) setPickerDate(selectedDate);
+                              }}
+                            />
+                            <HStack justifyContent="flex-end" space={3}>
+                              <Pressable onPress={() => setShowDatePicker(false)}>
+                                <Text style={{ color: "coolGray.300", fontWeight: "600" }}>
+                                  Cancel
+                                </Text>
+                              </Pressable>
+                              <Pressable
+                                onPress={() => {
+                                  const finalDate =
+                                    (pickerDate ?? new Date()).toISOString().slice(0, 10);
+                                  setDateISO(finalDate);
+                                  setShowDatePicker(false);
+                                }}
+                                style={{
+                                  backgroundColor: ACCENT_SOLID,
+                                  paddingHorizontal: 18,
+                                  paddingVertical: 10,
+                                  borderRadius: 999,
+                                }}
+                              >
+                                <Text style={{ color: "white", fontWeight: "700" }}>
+                                  Set date
+                                </Text>
+                              </Pressable>
+                            </HStack>
+                          </VStack>
+                        </GlassCard>
+                      </Box>
+                    </RNModal>
+                  )}
+                </VStack>
+                <HStack space={3}>
+                  {[
+                    { label: "Neck (cm)", value: neck, setter: setNeck },
+                    { label: "Waist (cm)", value: waist, setter: setWaist },
+                    { label: "Hip (cm)", value: hip, setter: setHip },
+                  ].map((field) => (
+                    <VStack flex={1} space={2} key={field.label}>
+                      <Text fontSize="xs" color="coolGray.400">
+                        {field.label}
+                      </Text>
+                      <TextInput
+                        value={field.value}
+                        onChangeText={(t) => field.setter(sanitize(t))}
+                        keyboardType={decimalKeyboard}
+                        placeholder="—"
+                        placeholderTextColor={INPUT_PLACEHOLDER}
+                        style={INPUT_STYLE}
+                      />
+                    </VStack>
+                  ))}
+                </HStack>
+                <VStack space={2}>
+                  <Text fontSize="xs" color="coolGray.400">
+                    Notes
+                  </Text>
+                  <TextInput
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder="Anything notable about today"
+                    placeholderTextColor={INPUT_PLACEHOLDER}
+                    style={[INPUT_STYLE, { minHeight: 70, textAlignVertical: "top" }]}
+                    multiline
+                  />
+                </VStack>
 
-            {/* Weight Entry Modal */}
-            {isOpen ? (
-                <WeightEntryModal
-                    key="weight-modal"
-                    isOpen
-                    onClose={onClose}
-                    onSave={handleSaveWeight}
-                    saving={saving}
-                />
-            ) : null}
-        </Box>
-    );
+                <HStack justifyContent="flex-end" space={3}>
+                  <Pressable onPress={onClose}>
+                    <Text style={{ color: "coolGray.300", fontWeight: "600" }}>
+                      Cancel
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={!canSave || !!saving}
+                    onPress={() =>
+                      onSave({
+                        weightKg: parsedWeight,
+                        dateISO,
+                        measurements: {
+                          neckCm: asNumber(neck),
+                          waistCm: asNumber(waist),
+                          hipCm: asNumber(hip),
+                        },
+                        notes: notes.trim() || undefined,
+                      })
+                    }
+                    style={{
+                      backgroundColor: canSave ? ACCENT_SOLID : "rgba(124,58,237,0.4)",
+                      paddingHorizontal: 20,
+                      paddingVertical: 12,
+                      borderRadius: 999,
+                    }}
+                  >
+                    <Text style={{ color: "white", fontWeight: "700" }}>
+                      {saving ? "Saving..." : "Save log"}
+                    </Text>
+                  </Pressable>
+                </HStack>
+              </VStack>
+            </GlassCard>
+          </RNScrollView>
+        </KeyboardAvoidingView>
+      </Box>
+    </RNModal>
+  );
 }
 
+/* =================================
+   Screen
+================================= */
+export default function ProgressSection() {
+  const { data: meData } = useQuery(GET_ME);
+  const userId: string | undefined = meData?.user?._id;
+  const { isOpen, onOpen, onClose } = useDisclose();
 
-const S = StyleSheet.create({
-    backdrop: {
-        flex: 1,
-        backgroundColor: "rgba(0,0,0,0.35)",
-        justifyContent: "flex-end",
+  const {
+    data: profileData,
+    loading: profileLoading,
+    refetch: refetchProfile,
+  } = useQuery(FITNESS_PROFILE, {
+    variables: { userId: userId as string },
+    skip: !userId,
+    fetchPolicy: "no-cache",
+  });
+
+  const {
+    data: progressData,
+    loading: progressLoading,
+    refetch: refetchProgress,
+  } = useQuery(PROGRESS_REPORT, {
+    variables: { userId: userId as string },
+    skip: !userId,
+    fetchPolicy: "no-cache",
+  });
+
+  const {
+    data: sessionsData,
+    loading: sessionLoading,
+    refetch: refetchSessions,
+  } = useQuery(SESSIONS_FOR_CLIENT, {
+    variables: { clientId: userId as string, pageNumber: 1, pageSize: 50 },
+    skip: !userId,
+    fetchPolicy: "no-cache",
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      refetchProfile();
+      refetchProgress();
+      refetchSessions();
+    }, [userId, refetchProfile, refetchProgress, refetchSessions])
+  );
+
+  const [addProgress, { loading: saving }] = useMutation(ADD_PROGRESS, {
+    onCompleted: () => {
+      refetchProgress();
+      refetchProfile();
+      onClose();
     },
-    sheet: {
-        backgroundColor: "#fff",
-        padding: 16,
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-    },
-    header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
-    title: { fontSize: 18, fontWeight: "700", color: "#111" },
-    link: { color: "#2563eb", fontWeight: "600" },
-    field: { marginBottom: 12 },
-    label: { fontSize: 13, color: "#6b7280", marginBottom: 6 },
-    input: {
-        borderWidth: 1,
-        borderColor: "#e5e7eb",
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: Platform.OS === "ios" ? 10 : 8,
-        fontSize: 16,
-        color: "#111827",
-    },
-    error: { marginTop: 4, fontSize: 12, color: "#ef4444" },
-    row: { flexDirection: "row", alignItems: "center" },
-    flex: { flex: 1 },
-    btn: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 10,
-        marginLeft: 8,
-    },
-    btnGhost: { backgroundColor: "transparent" },
-    btnPrimary: { backgroundColor: "#111827" },
-    btnDisabled: { backgroundColor: "#9ca3af" },
-    btnTextPrimary: { color: "#fff", fontWeight: "700" },
-    btnTextGhost: { color: "#374151", fontWeight: "600" },
-});
+  });
+
+  const profile = profileData?.fitnessProfile?.profile;
+  const progress = (progressData?.progressReport ?? [])
+    .slice()
+    .sort(
+      (a: any, b: any) =>
+        (parseDateSafe(b.dateISO)?.getTime() ?? 0) -
+        (parseDateSafe(a.dateISO)?.getTime() ?? 0)
+    );
+  const latest = progress[0];
+  const previous = progress[1];
+  const earliest = progress[progress.length - 1];
+
+  const currentWeight = latest?.weightKg ?? profile?.currentWeightKg ?? null;
+  const previousWeight = previous?.weightKg ?? null;
+  const weightDelta =
+    currentWeight != null && previousWeight != null
+      ? (currentWeight - previousWeight).toFixed(1)
+      : null;
+
+  const completedSessions = useMemo(() => {
+    const list: any[] = sessionsData?.sessionsForClient ?? [];
+    return list
+      .filter((s) => s.status === "COMPLETED")
+      .sort(
+        (a, b) =>
+          (parseDateSafe(b.scheduledStart)?.getTime() ?? 0) -
+          (parseDateSafe(a.scheduledStart)?.getTime() ?? 0)
+      )
+      .slice(0, 4);
+  }, [sessionsData]);
+
+  const handleSave = (payload: SavePayload) => {
+    if (!userId) return;
+    addProgress({
+      variables: {
+        input: {
+          userId,
+          dateISO: payload.dateISO,
+          weightKg: payload.weightKg,
+          measurements: payload.measurements,
+          notes: payload.notes,
+        },
+      },
+    });
+  };
+
+  const loadingAny = profileLoading || progressLoading || sessionLoading;
+
+  return (
+    <Screen withHeader backgroundColor={THEME_BG} headerColor={THEME_BG}>
+      <Box flex={1} bg={THEME_BG}>
+        <NBScrollView
+          flex={1}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
+        >
+          <VStack space={6}>
+            <HStack alignItems="center" justifyContent="space-between">
+              <VStack space={1}>
+                <Text fontSize="xs" color="coolGray.400">
+                  TRAINZILLA • PROGRESSION
+                </Text>
+                <Heading size="lg" color="white">
+                  Progress
+                </Heading>
+                <Text color="coolGray.300" fontSize="sm">
+                  Data-driven transformation overview
+                </Text>
+              </VStack>
+              <Button
+                leftIcon={<Ionicons name="add" size={16} color="white" />}
+                bg={ACCENT_SOLID}
+                _text={{ fontWeight: "bold" }}
+                _pressed={{ bg: "violet.700" }}
+                onPress={onOpen}
+              >
+                Log weight
+              </Button>
+            </HStack>
+
+            <GlassCard gradient>
+              {loadingAny ? (
+                <Skeleton h="32" rounded="2xl" startColor="gray.700" />
+              ) : (
+                <VStack space={4}>
+                  <HStack justifyContent="space-between" alignItems="center">
+                    <VStack>
+                      <Text fontSize="xs" color="coolGray.300">
+                        Current weight
+                      </Text>
+                      <Text fontSize="4xl" fontWeight="bold" color="white">
+                        {currentWeight != null ? `${currentWeight.toFixed(1)} kg` : "—"}
+                      </Text>
+                    </VStack>
+                    <VStack alignItems="flex-end" space={1}>
+                      <InfoChip
+                        icon="trending-down-outline"
+                        label={
+                          weightDelta
+                            ? `${weightDelta} kg vs last`
+                            : "Awaiting entries"
+                        }
+                      />
+                      <InfoChip
+                        icon="analytics-outline"
+                        label={`BMI ${latest?.bmi?.toFixed(1) ?? profile?.computed?.bmi ?? "—"}`}
+                      />
+                    </VStack>
+                  </HStack>
+                  <HStack space={2}>
+                    <InfoChip
+                      icon="calendar-outline"
+                      label={`Last logged ${fmtDate(latest?.dateISO)}`}
+                    />
+                    <InfoChip
+                      icon="flag-outline"
+                      label={`Goal ${profile?.targetWeightKg ?? "—"} kg`}
+                    />
+                  </HStack>
+                </VStack>
+              )}
+            </GlassCard>
+
+            <HStack space={3}>
+              <MetricCard
+                title="Daily calories"
+                value={
+                  profile?.computed?.recommendedCaloriesPerDay
+                    ? `${profile.computed.recommendedCaloriesPerDay}`
+                    : "—"
+                }
+                subtitle="Based on latest metrics"
+                icon="flame-outline"
+              />
+              <MetricCard
+                title="TDEE"
+                value={
+                  profile?.computed?.tdee ? `${profile.computed.tdee}` : "—"
+                }
+                subtitle="Maintenance burn"
+                icon="pulse-outline"
+              />
+            </HStack>
+
+            <GlassCard gradient>
+              <HStack justifyContent="space-between" alignItems="center" mb={4}>
+                <VStack>
+                  <Text fontSize="xs" color="coolGray.400">
+                    Weight trend
+                  </Text>
+                  <Text fontSize="lg" fontWeight="bold" color="white">
+                    Last 90 days
+                  </Text>
+                </VStack>
+                <InfoChip
+                  icon="podium-outline"
+                  label={`${progress.length} entries`}
+                />
+              </HStack>
+              {progress.length ? (
+                <>
+                  <Box
+                    borderWidth={1}
+                    borderColor="rgba(255,255,255,0.05)"
+                    rounded="2xl"
+                    bg="rgba(0,0,0,0.25)"
+                    p={3}
+                  >
+                    <WeightLineChartSvg
+                      progress={progress}
+                      height={260}
+                      width={360}
+                    />
+                  </Box>
+                  <HStack justifyContent="space-between" mt={3} space={3}>
+                    <GlassCard flex={1} bg="rgba(255,255,255,0.04)">
+                      <Text fontSize="xs" color="coolGray.400">
+                        Earliest
+                      </Text>
+                      <Text fontWeight="semibold" color="white">
+                        {fmtDate(earliest?.dateISO)}
+                      </Text>
+                      <Text fontSize="xs" color="coolGray.400">
+                        {earliest?.weightKg != null
+                          ? `${earliest.weightKg.toFixed(1)} kg`
+                          : "—"}
+                      </Text>
+                    </GlassCard>
+                    <GlassCard flex={1} bg="rgba(255,255,255,0.04)">
+                      <Text fontSize="xs" color="coolGray.400">
+                        Latest
+                      </Text>
+                      <Text fontWeight="semibold" color="white">
+                        {fmtDate(progress[0]?.dateISO)}
+                      </Text>
+                      <Text fontSize="xs" color="coolGray.400">
+                        {latest?.weightKg != null
+                          ? `${latest.weightKg.toFixed(1)} kg`
+                          : "—"}
+                      </Text>
+                    </GlassCard>
+                    <GlassCard flex={1} bg="rgba(36,37,55,0.7)">
+                      <Text fontSize="xs" color="coolGray.400">
+                        Change
+                      </Text>
+                      <Text
+                        fontWeight="bold"
+                        color={
+                          weightDelta && Number(weightDelta) < 0
+                            ? "#34D399"
+                            : weightDelta && Number(weightDelta) > 0
+                            ? "#F87171"
+                            : "white"
+                        }
+                      >
+                        {weightDelta ? `${weightDelta} kg` : "—"}
+                      </Text>
+                      <Text fontSize="xs" color="coolGray.400">
+                        vs previous entry
+                      </Text>
+                    </GlassCard>
+                  </HStack>
+                </>
+              ) : (
+                <VStack alignItems="center" space={2}>
+                  <Text color="coolGray.300">
+                    Log your first weigh-in to unlock the trend visualisation.
+                  </Text>
+                </VStack>
+              )}
+            </GlassCard>
+
+            <GlassCard>
+              <Text fontSize="md" fontWeight="bold" color="white" mb={4}>
+                Profile snapshot
+              </Text>
+              {profile ? (
+                <VStack space={3}>
+                  <HStack justifyContent="space-between">
+                    <Text fontSize="xs" color="coolGray.400">
+                      Started
+                    </Text>
+                    <Text color="white">{fmtDate(profile.startedOnISO)}</Text>
+                  </HStack>
+                  <HStack justifyContent="space-between">
+                    <Text fontSize="xs" color="coolGray.400">
+                      Experience
+                    </Text>
+                    <Text color="white">{profile.fitnessExperience ?? "—"}</Text>
+                  </HStack>
+                  <HStack justifyContent="space-between">
+                    <Text fontSize="xs" color="coolGray.400">
+                      Activity level
+                    </Text>
+                    <Text color="white">{profile.activityLevel ?? "—"}</Text>
+                  </HStack>
+                  <HStack justifyContent="space-between">
+                    <Text fontSize="xs" color="coolGray.400">
+                      Goal weight
+                    </Text>
+                    <Text color="white">{profile.targetWeightKg ?? "—"} kg</Text>
+                  </HStack>
+                  <HStack justifyContent="space-between">
+                    <Text fontSize="xs" color="coolGray.400">
+                      Target date
+                    </Text>
+                    <Text color="white">{fmtDate(profile.targetDateISO)}</Text>
+                  </HStack>
+                </VStack>
+              ) : (
+                <Skeleton h="24" rounded="xl" startColor="gray.700" />
+              )}
+            </GlassCard>
+
+            <GlassCard>
+              <HStack justifyContent="space-between" alignItems="center" mb={3}>
+                <Text fontSize="md" fontWeight="bold" color="white">
+                  Recent sessions
+                </Text>
+                <InfoChip
+                  icon="checkmark-circle-outline"
+                  label={`${completedSessions.length} logged`}
+                />
+              </HStack>
+              {sessionLoading ? (
+                <VStack space={2}>
+                  <Skeleton h="12" rounded="xl" startColor="gray.700" />
+                  <Skeleton h="12" rounded="xl" startColor="gray.700" />
+                </VStack>
+              ) : completedSessions.length ? (
+                <VStack space={2}>
+                  {completedSessions.map((s) => (
+                    <GlassCard key={s._id} bg="rgba(255,255,255,0.02)">
+                      <HStack justifyContent="space-between" alignItems="center">
+                        <VStack>
+                          <Text fontWeight="semibold" color="white">
+                            {s.type.replace("_", " ")}
+                          </Text>
+                          <Text fontSize="xs" color="coolGray.400">
+                            {fmtDate(s.scheduledStart)} → {fmtDate(s.scheduledEnd)}
+                          </Text>
+                        </VStack>
+                        <InfoChip icon="ribbon-outline" label="Completed" color="#34D399" />
+                      </HStack>
+                    </GlassCard>
+                  ))}
+                </VStack>
+              ) : (
+                <Text color="coolGray.400">No completed sessions yet.</Text>
+              )}
+            </GlassCard>
+          </VStack>
+        </NBScrollView>
+      </Box>
+
+      {isOpen && (
+        <WeightEntryModal
+          isOpen
+          onClose={onClose}
+          onSave={handleSave}
+          saving={saving}
+        />
+      )}
+    </Screen>
+  );
+}
+  const [showDatePicker, setShowDatePicker] = useState(false);

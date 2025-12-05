@@ -1,11 +1,17 @@
-import { ApolloClient, InMemoryCache, createHttpLink, ApolloLink, type FetchResult } from "@apollo/client";
+import { ENV } from "@/lib/env";
+import {
+  ApolloClient,
+  ApolloLink,
+  InMemoryCache,
+  Observable,
+  createHttpLink,
+  type FetchResult,
+} from "@apollo/client";
 import { setContext } from "@apollo/client/link/context";
-import * as SecureStore from "expo-secure-store";
-import { router } from "expo-router";
-import {jwtDecode} from "jwt-decode";
 import { onError } from "@apollo/client/link/error";
-import { Observable } from "@apollo/client";
-import {ENV} from "@/lib/env";
+import { router } from "expo-router";
+import * as SecureStore from "expo-secure-store";
+import { jwtDecode } from "jwt-decode";
 
 // --- Token change event bus (notify app when tokens update) ---
 type Listener = () => void;
@@ -17,11 +23,18 @@ export function onTokensChanged(fn: Listener) {
 }
 function _notifyTokensChanged() {
   _tokenListeners.forEach((fn) => {
-    try { fn(); } catch {}
+    try {
+      fn();
+    } catch {}
   });
 }
 
+type TokenPair = { accessToken: string | null; refreshToken: string | null };
+let inMemoryTokens: TokenPair | null = null;
 
+function setInMemoryTokens(accessToken: string | null, refreshToken: string | null) {
+  inMemoryTokens = { accessToken, refreshToken };
+}
 
 // Token management functions
 export const tokenKeys = {
@@ -30,14 +43,20 @@ export const tokenKeys = {
 };
 
 export async function saveTokens(accessToken: string, refreshToken: string) {
-  await SecureStore.setItemAsync(tokenKeys.access, accessToken);
-  await SecureStore.setItemAsync(tokenKeys.refresh, refreshToken);
+  setInMemoryTokens(accessToken, refreshToken);
+  await Promise.all([
+    SecureStore.setItemAsync(tokenKeys.refresh, refreshToken),
+    SecureStore.setItemAsync(tokenKeys.access, accessToken),
+  ]);
   _notifyTokensChanged(); // <— NEW
 }
 
 export async function clearTokens() {
-  await SecureStore.deleteItemAsync(tokenKeys.access);
-  await SecureStore.deleteItemAsync(tokenKeys.refresh);
+  setInMemoryTokens(null, null);
+  await Promise.all([
+    SecureStore.deleteItemAsync(tokenKeys.access),
+    SecureStore.deleteItemAsync(tokenKeys.refresh),
+  ]);
   _notifyTokensChanged(); // <— NEW
 }
 
@@ -69,8 +88,14 @@ async function getValidAccessToken(): Promise<string | null> {
 // --- Replace your existing getTokens with these two functions ---
 
 async function getRawTokens() {
-  const accessToken = await SecureStore.getItemAsync(tokenKeys.access);
-  const refreshToken = await SecureStore.getItemAsync(tokenKeys.refresh);
+  if (inMemoryTokens) {
+    return { ...inMemoryTokens };
+  }
+  const [accessToken, refreshToken] = await Promise.all([
+    SecureStore.getItemAsync(tokenKeys.access),
+    SecureStore.getItemAsync(tokenKeys.refresh),
+  ]);
+  setInMemoryTokens(accessToken, refreshToken);
   return { accessToken, refreshToken };
 }
 
@@ -102,7 +127,6 @@ export async function getTokens() {
   }
 }
 
-
 // Function to check if token is expired
 export function isTokenExpired(token: string): boolean {
   try {
@@ -124,11 +148,11 @@ export async function refreshAccessToken(): Promise<string | null> {
 
     // Make a direct HTTP request to refresh the token
     // We can't use the Apollo client here to avoid circular dependencies
-    const response = await fetch(ENV.API_URL + '/graphql', {
-      method: 'POST',
+    const response = await fetch(ENV.API_URL + "/graphql", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'role': 'client'
+        "Content-Type": "application/json",
+        role: "client",
       },
       body: JSON.stringify({
         query: `
@@ -139,8 +163,8 @@ export async function refreshAccessToken(): Promise<string | null> {
             }
           }
         `,
-        variables: { refreshToken }
-      })
+        variables: { refreshToken },
+      }),
     });
 
     const data = await response.json();
@@ -169,46 +193,46 @@ export async function refreshAccessToken(): Promise<string | null> {
 
 // Create the HTTP link
 const httpLink = createHttpLink({
-  uri: ENV.API_URL + '/graphql'
+  uri: ENV.API_URL + "/graphql",
 });
 
 // Auth link with token refresh logic
 const authLink = setContext(async (_, { headers }) => {
   try {
-    let { accessToken } = await getRawTokens();
-
-    // Check if token exists and is expired
-    if (accessToken && isTokenExpired(accessToken)) {
-      console.log("Access token expired, refreshing...");
-      accessToken = await refreshAccessToken();
-    }
+    const { accessToken } = await getTokens();
 
     return {
       headers: {
         ...headers,
-        role: 'client',
+        role: "client",
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
     };
   } catch (error) {
     console.error("Auth link error:", error);
-    return { headers };
+    return {
+      headers: {
+        ...headers,
+        role: "client",
+      },
+    };
   }
 });
 
 // Error link to handle authentication errors
 // @ts-ignore
-const errorLink = onError(({ graphQLErrors, networkError, operation, forward }) => {
-  if (graphQLErrors) {
-    for (const err of graphQLErrors) {
-      if (
+const errorLink = onError(
+  ({ graphQLErrors, networkError, operation, forward }) => {
+    if (graphQLErrors) {
+      for (const err of graphQLErrors) {
+        if (
           err.extensions?.code === "UNAUTHENTICATED" ||
           err.message?.toLowerCase().includes("unauthorized") ||
           err.message?.toLowerCase().includes("jwt expired")
-      ) {
-        return new Observable(observer => {
-          refreshAccessToken()
-              .then(newAccessToken => {
+        ) {
+          return new Observable((observer) => {
+            refreshAccessToken()
+              .then((newAccessToken) => {
                 if (!newAccessToken) {
                   observer.complete(); // No new token, abort
                   return;
@@ -224,24 +248,25 @@ const errorLink = onError(({ graphQLErrors, networkError, operation, forward }) 
                 });
                 // Forward the operation, pass results to the observer
                 const subscriber = forward(operation).subscribe({
-                  next: result => observer.next(result),
-                  error: err => observer.error(err),
+                  next: (result) => observer.next(result),
+                  error: (err) => observer.error(err),
                   complete: () => observer.complete(),
                 });
                 return () => subscriber.unsubscribe();
               })
-              .catch(error => {
+              .catch((error) => {
                 observer.error(error);
               });
-        });
+          });
+        }
       }
     }
-  }
 
-  if (networkError) {
-    console.error(`[Network error]:`, networkError);
+    if (networkError) {
+      console.error(`[Network error]:`, networkError);
+    }
   }
-});
+);
 // Combine all links
 
 const loggingLink = new ApolloLink((operation, forward) => {
@@ -278,13 +303,7 @@ const loggingLink = new ApolloLink((operation, forward) => {
   });
 });
 
-
-const link = ApolloLink.from([
-  errorLink,
-  authLink,
-  loggingLink,
-  httpLink,
-]);
+const link = ApolloLink.from([errorLink, authLink, loggingLink, httpLink]);
 
 // Create Apollo Client
 export const apollo = new ApolloClient({
@@ -292,12 +311,12 @@ export const apollo = new ApolloClient({
   cache: new InMemoryCache(),
   defaultOptions: {
     watchQuery: {
-      fetchPolicy: 'cache-and-network',
-      errorPolicy: 'all',
+      fetchPolicy: "cache-and-network",
+      errorPolicy: "all",
     },
     query: {
-      fetchPolicy: 'network-only',
-      errorPolicy: 'all',
+      fetchPolicy: "network-only",
+      errorPolicy: "all",
     },
   },
 });

@@ -1,288 +1,217 @@
-// app/(profile)/index.tsx (or wherever your ProfileScreen lives)
 import React from "react";
 import {
-    View,
-    Text,
-    ScrollView,
-    TouchableOpacity,
-    StyleSheet,
-    Alert,
-    Image,
-} from "react-native";
-import { FontAwesome5 } from "@expo/vector-icons";
+  Box,
+  VStack,
+  Text,
+  ScrollView,
+  Pressable,
+  HStack,
+  Avatar,
+  Button,
+  Actionsheet,
+  useDisclose,
+  useToast,
+} from "native-base";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useQuery } from "@apollo/client/react";
 import { GET_ME } from "@/graphql/queries";
 import { logout } from "@/lib/apollo";
-import { router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-
-type MeResponse = {
-    user?: {
-        _id: string;
-        name?: string | null;
-        email?: string | null;
-        avatarUrl?: string | null;
-    };
-};
-
-const MenuOption = ({
-                        icon,
-                        title,
-                        subtitle,
-                        onPress,
-                        color = "#333",
-                    }: {
-    icon: any;
-    title: string;
-    subtitle?: string;
-    onPress: () => void;
-    color?: string;
-}) => (
-    <TouchableOpacity style={styles.menuOption} onPress={onPress}>
-        <View style={[styles.menuIconContainer, { backgroundColor: color + "15" }]}>
-            <FontAwesome5 name={icon} size={20} color={color} />
-        </View>
-        <View style={styles.menuTextContainer}>
-            <Text style={styles.menuTitle}>{title}</Text>
-            {subtitle ? <Text style={styles.menuSubtitle}>{subtitle}</Text> : null}
-        </View>
-        <FontAwesome5 name="chevron-right" size={16} color="#999" />
-    </TouchableOpacity>
-);
-
-function InitialsCircle({ name }: { name?: string | null }) {
-    const initials =
-        (name || "")
-            .trim()
-            .split(/\s+/)
-            .slice(0, 2)
-            .map((n) => n[0]?.toUpperCase() || "")
-            .join("") || "U";
-    return (
-        <View style={styles.avatar}>
-            <Text style={{ fontSize: 28, fontWeight: "700", color: "#555" }}>
-                {initials}
-            </Text>
-        </View>
-    );
-}
 
 export default function ProfileScreen() {
-    const { data } = useQuery<MeResponse>(GET_ME);
-    const me = data?.user;
+  const { data } = useQuery(GET_ME);
+  const me = data?.user;
+  const toast = useToast();
+  const { isOpen, onOpen, onClose } = useDisclose();
 
-    const handleLogout = () => {
-        Alert.alert("Logout", "Are you sure you want to logout?", [
-            { text: "Cancel", style: "cancel" },
-            {
-                text: "Logout",
-                style: "destructive",
-                onPress: async () => {
-                    try {
-                        await logout();
-                    } catch (error) {
-                        console.error("Logout error:", error);
-                        Alert.alert("Error", "Failed to logout. Please try again.");
-                    }
-                },
-            },
-        ]);
-    };
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast.show({
+        title: "Logout failed",
+        description: "Please try again",
+        bgColor: "red.500",
+        placement: "top",
+      });
+    }
+  };
 
-    return (
-        <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-                {/* Minimal title row (no back button) */}
-                <View style={styles.titleBar}>
-                    <Text style={styles.headerTitle}>Profile</Text>
-                </View>
+  return (
+    <Box flex={1} bg="#05060A" safeArea>
+      <ScrollView contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+        <VStack space={4}>
+          <Box
+            p={5}
+            rounded="3xl"
+            bg={{
+              linearGradient: {
+                colors: ["rgba(124,58,237,0.35)", "rgba(8,9,18,0.95)"],
+                start: [0, 0],
+                end: [1, 1],
+              },
+            }}
+            borderWidth={1}
+            borderColor="rgba(255,255,255,0.12)"
+          >
+            <HStack justifyContent="space-between" alignItems="center">
+              <VStack>
+                <Text fontSize="xs" color="coolGray.200">
+                  Profile
+                </Text>
+                <Text fontSize="2xl" fontWeight="bold" color="white">
+                  {me?.name ?? "Athlete"}
+                </Text>
+                <Text fontSize="xs" color="coolGray.400">
+                  {me?.email ?? ""}
+                </Text>
+              </VStack>
+              <Avatar size="lg" bg="#7C3AED" source={me?.avatarUrl ? { uri: me.avatarUrl } : undefined}>
+                {(me?.name ?? "U").charAt(0).toUpperCase()}
+              </Avatar>
+            </HStack>
+            <HStack mt={4} space={3}>
+              <InfoPill icon="person-outline" label="Account" value="Active" />
+              <InfoPill icon="shield-checkmark-outline" label="Security" value="Protected" />
+            </HStack>
+          </Box>
 
-                {/* User Info Card */}
-                <View style={styles.userCard}>
-                    {me?.avatarUrl ? (
-                        <Image source={{ uri: me.avatarUrl }} style={styles.avatarImg} />
-                    ) : (
-                        <InitialsCircle name={me?.name} />
-                    )}
-                    <Text style={styles.userName}>{me?.name || "User"}</Text>
-                    <Text style={styles.userEmail}>{me?.email}</Text>
-                </View>
+          <CardSection icon="people-outline" title="Connections">
+            <MenuItem
+              icon="git-merge-outline"
+              title="Trainer invitations"
+              subtitle="Manage trainer connections"
+              onPress={() => router.push("/(profile)/invitations")}
+            />
+          </CardSection>
 
-                {/* Menu Options */}
-                <View style={styles.menuSection}>
-                    <Text style={styles.sectionTitle}>Account</Text>
+          <CardSection icon="help-circle-outline" title="Support">
+            <MenuItem
+              icon="mail-open-outline"
+              title="Help & support"
+              subtitle="support@trainzilla.in"
+              onPress={() =>
+                toast.show({
+                  title: "Support",
+                  description: "support@trainzilla.in",
+                  placement: "top",
+                })
+              }
+            />
+            <MenuItem
+              icon="information-circle-outline"
+              title="About"
+              subtitle="Version 1.0.0"
+              onPress={onOpen}
+            />
+          </CardSection>
 
-                    <MenuOption
-                        icon="user-friends"
-                        title="Trainer Invitations"
-                        subtitle="Manage trainer connections"
-                        onPress={() => router.push("/(profile)/invitations")}
-                        color="#2196F3"
-                    />
+          <CardSection icon="log-out-outline" title="Account actions">
+            <Button
+              onPress={handleLogout}
+              rounded="full"
+              bg="rgba(248,113,113,0.15)"
+              _text={{ color: "#F87171", fontWeight: "bold" }}
+              _pressed={{ bg: "rgba(248,113,113,0.25)" }}
+            >
+              Logout
+            </Button>
+          </CardSection>
+        </VStack>
+      </ScrollView>
 
-                    <MenuOption
-                        icon="bell"
-                        title="Notifications"
-                        subtitle="Coming soon"
-                        onPress={() =>
-                            Alert.alert("Coming Soon", "Notification settings will be available soon.")
-                        }
-                        color="#FF9800"
-                    />
-
-                    <MenuOption
-                        icon="shield-alt"
-                        title="Privacy & Security"
-                        subtitle="Coming soon"
-                        onPress={() =>
-                            Alert.alert("Coming Soon", "Privacy settings will be available soon.")
-                        }
-                        color="#9C27B0"
-                    />
-                </View>
-
-                <View style={styles.menuSection}>
-                    <Text style={styles.sectionTitle}>Support</Text>
-
-                    <MenuOption
-                        icon="question-circle"
-                        title="Help & Support"
-                        subtitle="Get help with the app"
-                        onPress={() =>
-                            Alert.alert("Coming Soon", "Help center will be available soon.")
-                        }
-                        color="#607D8B"
-                    />
-
-                    <MenuOption
-                        icon="info-circle"
-                        title="About"
-                        subtitle="App version and information"
-                        onPress={() =>
-                            Alert.alert(
-                                "TrainZilla",
-                                "Version 1.0.0\n\nYour personal fitness journey companion."
-                            )
-                        }
-                        color="#795548"
-                    />
-                </View>
-
-                {/* Logout */}
-                <View style={styles.logoutSection}>
-                    <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                        <FontAwesome5
-                            name="sign-out-alt"
-                            size={16}
-                            color="#DC2626"
-                            style={{ marginRight: 8 }}
-                        />
-                        <Text style={styles.logoutText}>Logout</Text>
-                    </TouchableOpacity>
-                </View>
-            </ScrollView>
-        </SafeAreaView>
-    );
+      <Actionsheet isOpen={isOpen} onClose={onClose} hideDragIndicator>
+        <Actionsheet.Content bg="#0F111A" borderTopWidth={1} borderTopColor="rgba(255,255,255,0.08)">
+          <Text fontSize="lg" fontWeight="bold" color="white">
+            About TrainZilla
+          </Text>
+          <Text fontSize="xs" color="coolGray.400" mt={2} textAlign="center">
+            Your personal studio in your pocket. Streamlined coaching, precision nutrition, and accountability—anytime,
+            anywhere.
+          </Text>
+          <Button mt={4} onPress={onClose} bg="#7C3AED" _text={{ color: "white", fontWeight: "700" }}>
+            Close
+          </Button>
+        </Actionsheet.Content>
+      </Actionsheet>
+    </Box>
+  );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#f5f5f5" },
+function CardSection({
+  icon,
+  title,
+  children,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <VStack p={4} rounded="2xl" borderWidth={1} borderColor="rgba(255,255,255,0.08)" bg="#0F111A" space={3}>
+      <HStack space={2} alignItems="center">
+        <Box bg="rgba(124,58,237,0.15)" rounded="full" p={2}>
+          <Ionicons name={icon} size={16} color="#C4B5FD" />
+        </Box>
+        <Text fontSize="sm" fontWeight="bold" color="white">
+          {title}
+        </Text>
+      </HStack>
+      <VStack>{children}</VStack>
+    </VStack>
+  );
+}
 
-    // Minimal title bar (no back button)
-    titleBar: {
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        paddingBottom: 8,
-        backgroundColor: "#fff",
-        borderBottomWidth: 1,
-        borderBottomColor: "#e5e5e5",
-    },
-    headerTitle: { fontSize: 20, fontWeight: "bold", color: "#111" },
+function MenuItem({
+  icon,
+  title,
+  subtitle,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress}>
+      <HStack py={3} alignItems="center" borderBottomWidth={1} borderColor="rgba(255,255,255,0.05)">
+        <Box w={10} h={10} rounded="full" bg="rgba(255,255,255,0.06)" alignItems="center" justifyContent="center">
+          <Ionicons name={icon} size={18} color="#C4B5FD" />
+        </Box>
+        <VStack flex={1} ml={3} space={1}>
+          <Text fontSize="sm" fontWeight="600" color="white">
+            {title}
+          </Text>
+          {subtitle ? (
+            <Text fontSize="xs" color="coolGray.400">
+              {subtitle}
+            </Text>
+          ) : null}
+        </VStack>
+        <Ionicons name="chevron-forward" size={16} color="#7C7C8A" />
+      </HStack>
+    </Pressable>
+  );
+}
 
-    userCard: {
-        backgroundColor: "#fff",
-        marginHorizontal: 16,
-        marginTop: 16,
-        padding: 24,
-        borderRadius: 12,
-        alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
-        elevation: 2,
-    },
-    avatar: {
-        width: 84,
-        height: 84,
-        borderRadius: 42,
-        backgroundColor: "#f0f0f0",
-        justifyContent: "center",
-        alignItems: "center",
-        marginBottom: 16,
-    },
-    avatarImg: {
-        width: 84,
-        height: 84,
-        borderRadius: 42,
-        backgroundColor: "#f0f0f0",
-        marginBottom: 16,
-    },
-    userName: { fontSize: 22, fontWeight: "bold", color: "#111", marginBottom: 4 },
-    userEmail: { fontSize: 14, color: "#666" },
-
-    menuSection: {
-        backgroundColor: "#fff",
-        marginHorizontal: 16,
-        marginTop: 16,
-        borderRadius: 12,
-        overflow: "hidden",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 3,
-        elevation: 2,
-    },
-    sectionTitle: {
-        fontSize: 14,
-        fontWeight: "600",
-        color: "#999",
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        paddingHorizontal: 16,
-        paddingTop: 16,
-        paddingBottom: 8,
-    },
-    menuOption: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: "#f0f0f0",
-    },
-    menuIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 10,
-        justifyContent: "center",
-        alignItems: "center",
-        marginRight: 12,
-    },
-    menuTextContainer: { flex: 1 },
-    menuTitle: { fontSize: 16, fontWeight: "500", color: "#111", marginBottom: 2 },
-    menuSubtitle: { fontSize: 13, color: "#666" },
-
-    logoutSection: { marginHorizontal: 16, marginTop: 24, marginBottom: 32 },
-    logoutButton: {
-        flexDirection: "row",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: 16,
-        borderRadius: 12,
-        backgroundColor: "#fff",
-        borderWidth: 1,
-        borderColor: "#DC2626",
-    },
-    logoutText: { color: "#DC2626", fontSize: 16, fontWeight: "600" },
-});
+function InfoPill({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
+  return (
+    <HStack
+      space={2}
+      alignItems="center"
+      px={3}
+      py={1.5}
+      borderRadius={999}
+      bg="rgba(255,255,255,0.06)"
+      borderWidth={1}
+      borderColor="rgba(255,255,255,0.12)"
+    >
+      <Ionicons name={icon} size={14} color="#C4B5FD" />
+      <Text fontSize="xs" color="coolGray.300">
+        {label}: <Text color="white">{value}</Text>
+      </Text>
+    </HStack>
+  );
+}

@@ -1,24 +1,29 @@
-// app/sessions/[trainerId].tsx
 import React, { useEffect, useMemo, useState } from "react";
-import {
-    View,
-    Text,
-    ScrollView,
-    TouchableOpacity,
-    ActivityIndicator,
-    StyleSheet,
-    Alert,
-    SafeAreaView,
-    Image,
-    TextInput,
-    Modal,
-} from "react-native";
-import { FontAwesome5 } from "@expo/vector-icons";
+import { Alert, TextInput } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQuery } from "@apollo/client/react";
 import {
+    Avatar,
+    Badge,
+    Box,
+    Button,
+    Divider,
+    Flex,
+    HStack,
+    Icon,
+    Modal,
+    Pressable,
+    ScrollView,
+    Spinner,
+    Text,
+    VStack,
+} from "native-base";
+import { LinearGradient } from "expo-linear-gradient";
+import { Feather, FontAwesome5 } from "@expo/vector-icons";
+import {
     HourSlot,
     Session,
+    SessionStatus,
     SessionType,
     Subscription,
     SubscriptionPlan,
@@ -27,26 +32,31 @@ import {
     GET_ACTIVE_CLIENT_SUBSCRIPTIONS,
     GET_ME,
     GET_SESSIONS_FOR_TRAINER,
-    GET_TRAINER_PLANS, GET_TRAINER_SLOTS_NEXT_7_DAYS,
+    GET_TRAINER_CONTACT,
+    GET_TRAINER_PLANS,
+    GET_TRAINER_SLOTS_NEXT_7_DAYS,
 } from "@/graphql/queries";
 import {
     BOOK_TRAINING_SESSION,
     CREATE_SUBSCRIPTION,
     CANCEL_SUBSCRIPTION,
 } from "@/graphql/mutations";
-
-// Razorpay (native module)
 import RazorpayCheckout from "react-native-razorpay";
 import { ENV } from "@/lib/env";
 import Screen from "@/components/ui/Screen";
 
-/* ===================== Utils ===================== */
-
-const SLOT_DURATION_MIN = 60; // 60-minute sessions
-const GRID_STEP_MIN = 30; // slots start every 30 minutes
-const START_HOUR = 5; // 05:00 local
-const END_HOUR = 22; // 22:00 local
+const SLOT_DURATION_MIN = 60;
 const LOOKAHEAD_DAYS = 7;
+
+const BASE_BG = "#050111";
+const HERO_BG = "#140B2D";
+const CARD_BG = "#0E0A22";
+const BORDER_COLOR = "rgba(124,58,237,0.25)";
+const SOFT_TEXT = "#A5A1C2";
+const ACCENT_PURPLE = "#7C3AED";
+const ACCENT_PURPLE_DARK = "#5B21B6";
+const ACCENT_PURPLE_LIGHT = "#C4B5FD";
+const BLOCKING_STATUSES: SessionStatus[] = ["PENDING", "CONFIRMED"];
 
 const addMinutes = (d: Date, m: number) => new Date(d.getTime() + m * 60000);
 const toISO = (d: Date) => new Date(d).toISOString();
@@ -54,33 +64,26 @@ const sameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
-
-function startOfDayLocal(d: Date) {
+const startOfDayLocal = (d: Date) => {
     const x = new Date(d);
     x.setHours(0, 0, 0, 0);
     return x;
-}
-function daysArray(): Date[] {
+};
+const daysArray = () => {
     const now = new Date();
-    const arr: Date[] = [];
-    for (let i = 0; i < LOOKAHEAD_DAYS; i++) {
+    return Array.from({ length: LOOKAHEAD_DAYS }, (_, i) => {
         const d = new Date(now);
         d.setDate(now.getDate() + i);
-        arr.push(startOfDayLocal(d));
-    }
-    return arr;
-}
-function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
-    return aStart < bEnd && bStart < aEnd;
-}
-function isFutureWithin7Days(d: Date) {
-    const now = new Date();
-    const max = addMinutes(now, LOOKAHEAD_DAYS * 24 * 60);
-    return d >= now && d <= max;
-}
-
+        return startOfDayLocal(d);
+    });
+};
 const isPast = (d: Date) => d.getTime() <= Date.now();
-
+const addDaysMinutes = LOOKAHEAD_DAYS * 24 * 60;
+const isFutureWithin7Days = (d: Date) => {
+    const now = new Date();
+    const max = addMinutes(now, addDaysMinutes);
+    return d >= now && d <= max;
+};
 const formatYMD = (d: Date) => {
     const y = d.getFullYear();
     const m = `${d.getMonth() + 1}`.padStart(2, "0");
@@ -88,7 +91,83 @@ const formatYMD = (d: Date) => {
     return `${y}-${m}-${day}`;
 };
 
-/* ===================== Component ===================== */
+const STATUS_LABELS: Record<string, { color: string; bg: string; label: string }> = {
+    ACTIVE: { color: "#22C55E", bg: "rgba(34,197,94,0.15)", label: "Active" },
+    REQUESTED_CANCELLATION: {
+        color: "#60A5FA",
+        bg: "rgba(96,165,250,0.15)",
+        label: "Ending this cycle",
+    },
+    PENDING: { color: "#FBBF24", bg: "rgba(251,191,36,0.18)", label: "Pending" },
+};
+
+type SectionHeaderProps = {
+    title: string;
+    subtitle?: string;
+    actionLabel?: string;
+    onActionPress?: () => void;
+};
+
+const SectionHeader = ({ title, subtitle, actionLabel, onActionPress }: SectionHeaderProps) => (
+    <HStack justifyContent="space-between" alignItems="flex-start" mb={4} space={3}>
+        <VStack flex={1} space={1}>
+            <Text color="white" fontSize="lg" fontWeight="bold">
+                {title}
+            </Text>
+            {subtitle ? (
+                <Text color={SOFT_TEXT} fontSize="xs">
+                    {subtitle}
+                </Text>
+            ) : null}
+        </VStack>
+        {actionLabel && onActionPress ? (
+            <Pressable onPress={onActionPress} hitSlop={12}>
+                <Text color={ACCENT_PURPLE_LIGHT} fontWeight="bold" fontSize="xs">
+                    {actionLabel}
+                </Text>
+            </Pressable>
+        ) : null}
+    </HStack>
+);
+
+const GlassSurface = ({ children, ...props }: { children: React.ReactNode } & Record<string, any>) => (
+    <Box
+        borderRadius="3xl"
+        borderWidth={1}
+        borderColor={BORDER_COLOR}
+        bg="rgba(10,5,23,0.9)"
+        px={5}
+        py={5}
+        {...props}
+    >
+        {children}
+    </Box>
+);
+
+const HeroStat = ({ icon, label, value }: { icon: string; label: string; value: string }) => (
+    <VStack
+        flex={1}
+        borderRadius="2xl"
+        borderWidth={1}
+        borderColor="rgba(255,255,255,0.05)"
+        bg="rgba(255,255,255,0.02)"
+        px={4}
+        py={3}
+        space={1}
+    >
+        <HStack space={2} alignItems="center">
+            <Box bg="rgba(124,58,237,0.2)" p={1.5} borderRadius="full">
+                <Icon as={Feather} name={icon} size="sm" color={ACCENT_PURPLE_LIGHT} />
+            </Box>
+            <Text color={SOFT_TEXT} fontSize="xs" textTransform="uppercase">
+                {label}
+            </Text>
+        </HStack>
+        <Text color="white" fontSize="lg" fontWeight="bold">
+            {value}
+        </Text>
+    </VStack>
+);
 
 export default function TrainerDetail() {
     const params = useLocalSearchParams<{
@@ -102,105 +181,115 @@ export default function TrainerDetail() {
     const displayName = params.trainerName || params.trainerEmail || "Trainer";
     const avatarUrl = params.avatarUrl || "";
 
-    // UI state
-    const [selectedDay, setSelectedDay] = useState<Date>(
-        startOfDayLocal(new Date())
-    );
+    const [selectedDay, setSelectedDay] = useState<Date>(startOfDayLocal(new Date()));
     const [sessionType, setSessionType] = useState<SessionType>("ONLINE");
-
-    // Address (IN_PERSON)
     const [street, setStreet] = useState("");
     const [aptSuite, setAptSuite] = useState("");
     const [city, setCity] = useState("");
     const [stateRegion, setStateRegion] = useState("");
     const [postalCode, setPostalCode] = useState("");
     const [country, setCountry] = useState("");
-
-    // Notes
     const [notesClient, setNotesClient] = useState("");
-
-    // Subscription selection
-    const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string>(
-        ""
-    );
-
-    // Confirm modal
+    const [prefilledAddress, setPrefilledAddress] = useState(false);
+    const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string>("");
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [pendingStartISO, setPendingStartISO] = useState<string>("");
-
-    // Payment success flag
     const [paymentSuccess, setPaymentSuccess] = useState(false);
 
-    // Me
     const { data: meData, loading: meLoading } = useQuery(GET_ME);
 
-    // Sessions for trainer (we still fetch to mark booked slots if user has sub)
-    const {
-        data: sessData,
-        loading: sessLoading,
-        refetch: refetchSessions,
-    } = useQuery<{ sessionsForTrainer: Session[] }>(GET_SESSIONS_FOR_TRAINER, {
+    const { data: sessionsData, loading: sessLoading, refetch: refetchSessions } = useQuery<{
+        sessionsForTrainer: Session[];
+    }>(GET_SESSIONS_FOR_TRAINER, {
         variables: { trainerId, pagination: { pageNumber: 1, pageSize: 300 } },
         skip: !trainerId,
         notifyOnNetworkStatusChange: true,
     });
 
-    // Active client subscriptions (ACTIVE, PENDING, REQUESTED_CANCELLATION)
     const {
         data: subData,
         loading: subLoading,
         refetch: refetchSubs,
-    } = useQuery<{ activeClientSubscriptions: Subscription[] }>(
-        GET_ACTIVE_CLIENT_SUBSCRIPTIONS,
-        {
-            variables: { trainerId },
-            skip: !trainerId,
-            notifyOnNetworkStatusChange: true,
-        }
-    );
+    } = useQuery<{ activeClientSubscriptions: Subscription[] }>(GET_ACTIVE_CLIENT_SUBSCRIPTIONS, {
+        variables: { trainerId },
+        skip: !trainerId,
+        notifyOnNetworkStatusChange: true,
+    });
 
-    // Trainer plans (for subscribe flow)
     const {
         data: plansData,
         loading: plansLoading,
         refetch: refetchPlans,
-    } = useQuery<{ subscriptionPlansForTrainer: SubscriptionPlan[] }>(
-        GET_TRAINER_PLANS,
-        {
-            variables: { trainerId, pagination: { pageNumber: 1, pageSize: 50 } },
-            skip: !trainerId,
-            notifyOnNetworkStatusChange: true,
-        }
-    );
+    } = useQuery<{ subscriptionPlansForTrainer: SubscriptionPlan[] }>(GET_TRAINER_PLANS, {
+        variables: { trainerId, pagination: { pageNumber: 1, pageSize: 50 } },
+        skip: !trainerId,
+        notifyOnNetworkStatusChange: true,
+    });
 
-    const {
-        data: slotsData,
-        loading: slotsLoading,
-        refetch: refetchSlots,
-    } = useQuery<{ trainerAvailableHourSlotsNext7Days: HourSlot[] }>(
-        GET_TRAINER_SLOTS_NEXT_7_DAYS,
-        {
-            variables: { trainerId },
-            skip: !trainerId,
-            notifyOnNetworkStatusChange: true,
-            fetchPolicy: "no-cache",
-        }
-    );
+    const { data: slotsData, loading: slotsLoading, refetch: refetchSlots } = useQuery<{
+        trainerAvailableHourSlotsNext7Days: HourSlot[];
+    }>(GET_TRAINER_SLOTS_NEXT_7_DAYS, {
+        variables: { trainerId },
+        skip: !trainerId,
+        notifyOnNetworkStatusChange: true,
+        fetchPolicy: "no-cache",
+    });
 
-    const [bookSession, { loading: booking }] =
-        useMutation(BOOK_TRAINING_SESSION);
-    const [createSubscription, { loading: creatingSub }] =
-        useMutation(CREATE_SUBSCRIPTION);
-    const [cancelSubscription, { loading: cancelling }] =
-        useMutation(CANCEL_SUBSCRIPTION);
+    const { data: trainerContactData } = useQuery<{
+        trainer: {
+            _id: string;
+            userId: string;
+            contact?: {
+                phone?: string | null;
+                addressLine1?: string | null;
+                addressLine2?: string | null;
+                city?: string | null;
+                state?: string | null;
+                country?: string | null;
+                postalCode?: string | null;
+            } | null;
+        } | null;
+    }>(GET_TRAINER_CONTACT, {
+        variables: { trainerId },
+        skip: !trainerId,
+    });
+
+    const [bookSession, { loading: booking }] = useMutation(BOOK_TRAINING_SESSION);
+    const [createSubscription, { loading: creatingSub }] = useMutation(CREATE_SUBSCRIPTION);
+    const [cancelSubscription, { loading: cancelling }] = useMutation(CANCEL_SUBSCRIPTION);
 
     const next7Days = useMemo(() => daysArray(), []);
+    const allSessions = useMemo(
+        () => sessionsData?.sessionsForTrainer ?? [],
+        [sessionsData]
+    );
+    const rawServerSlots = useMemo<HourSlot[]>(
+        () => slotsData?.trainerAvailableHourSlotsNext7Days ?? [],
+        [slotsData]
+    );
 
-    // Flatten slots from API
-    const serverSlots: HourSlot[] =
-        slotsData?.trainerAvailableHourSlotsNext7Days ?? [];
+    const bookedSlotTimes = useMemo(() => {
+        const now = new Date();
+        const max = addMinutes(now, addDaysMinutes);
+        const taken = new Set<number>();
+        for (const session of allSessions) {
+            const start = new Date(session.scheduledStart);
+            if (BLOCKING_STATUSES.includes(session.status) && start >= now && start <= max) {
+                taken.add(start.getTime());
+            }
+        }
+        return taken;
+    }, [allSessions]);
 
-// Count per day (key = "YYYY-MM-DD")
+    const serverSlots = useMemo(
+        () =>
+            rawServerSlots.filter((slot) => {
+                const start = new Date(slot.startUtc).getTime();
+                return !bookedSlotTimes.has(start);
+            }),
+        [rawServerSlots, bookedSlotTimes]
+    );
+
     const countsByYmd = useMemo(() => {
         const acc: Record<string, number> = {};
         for (const s of serverSlots) {
@@ -209,7 +298,6 @@ export default function TrainerDetail() {
         return acc;
     }, [serverSlots]);
 
-// UI needs counts by the 7 calendar chips
     const availableCounts = useMemo(() => {
         const counts: Record<string, number> = {};
         for (const d of next7Days) {
@@ -219,8 +307,6 @@ export default function TrainerDetail() {
         return counts;
     }, [next7Days, countsByYmd]);
 
-// Slots for the selected day → map to shape expected by UI renderer
-// Slots for the selected day → map to shape expected by UI renderer
     const slotsForSelected = useMemo(
         () =>
             serverSlots
@@ -228,76 +314,71 @@ export default function TrainerDetail() {
                 .map((s) => {
                     const start = new Date(s.startUtc);
                     const end = new Date(s.endUtc);
-
-                    // disable if start is in the past or outside 7-day lookahead
-                    const disabled =
-                        isPast(start) || !isFutureWithin7Days(start);
-
+                    const disabled = isPast(start) || !isFutureWithin7Days(start);
                     return { start, end, disabled };
                 }),
         [serverSlots, selectedDay]
     );
 
+    const trainerContact = trainerContactData?.trainer?.contact;
 
-    // Subscriptions filtered for this trainer (ACTIVE, PENDING, REQUESTED_CANCELLATION)
-    const subsForTrainer = useMemo(() => {
-        return subData?.activeClientSubscriptions ?? [];
-    }, [subData]);
+    useEffect(() => {
+        if (prefilledAddress || !trainerContact) {
+            return;
+        }
+        const hasDetails =
+            trainerContact.addressLine1 ||
+            trainerContact.addressLine2 ||
+            trainerContact.city ||
+            trainerContact.state ||
+            trainerContact.country ||
+            trainerContact.postalCode;
+        if (!hasDetails) {
+            return;
+        }
 
-    const activeSubsForTrainer = useMemo(() => {
-        return subsForTrainer.filter((s) => s.status === "ACTIVE");
-    }, [subsForTrainer]);
+        setStreet((prev) => prev || trainerContact.addressLine1 || "");
+        setAptSuite((prev) => prev || trainerContact.addressLine2 || "");
+        setCity((prev) => prev || trainerContact.city || "");
+        setStateRegion((prev) => prev || trainerContact.state || "");
+        setPostalCode((prev) => prev || trainerContact.postalCode || "");
+        setCountry((prev) => prev || trainerContact.country || "");
+        setPrefilledAddress(true);
+    }, [trainerContact, prefilledAddress]);
 
-    const pendingSubsForTrainer = useMemo(() => {
-        return subsForTrainer.filter((s) => s.status === "PENDING");
-    }, [subsForTrainer]);
-
-    const cancelRequestedSubsForTrainer = useMemo(() => {
-        return subsForTrainer.filter((s) => s.status === "REQUESTED_CANCELLATION");
-    }, [subsForTrainer]);
-
-    const hasActive = activeSubsForTrainer.length > 0;
-    const hasPending = pendingSubsForTrainer.length > 0;
-    const hasCancelRequested = cancelRequestedSubsForTrainer.length > 0;
-
-    // ✅ Eligible to book if ACTIVE or REQUESTED_CANCELLATION
-    const bookingEligibleSubs = useMemo(() => {
-        return subsForTrainer.filter(
-            (s) => s.status === "ACTIVE" || s.status === "REQUESTED_CANCELLATION"
-        );
-    }, [subsForTrainer]);
+    const subsForTrainer = useMemo(() => subData?.activeClientSubscriptions ?? [], [subData]);
+    const activeSubsForTrainer = useMemo(() => subsForTrainer.filter((s) => s.status === "ACTIVE"), [subsForTrainer]);
+    const pendingSubsForTrainer = useMemo(
+        () => subsForTrainer.filter((s) => s.status === "PENDING"),
+        [subsForTrainer]
+    );
+    const cancelRequestedSubsForTrainer = useMemo(
+        () => subsForTrainer.filter((s) => s.status === "REQUESTED_CANCELLATION"),
+        [subsForTrainer]
+    );
+    const bookingEligibleSubs = useMemo(
+        () => subsForTrainer.filter((s) => s.status === "ACTIVE" || s.status === "REQUESTED_CANCELLATION"),
+        [subsForTrainer]
+    );
 
     const hasBookingEligibleSubs = bookingEligibleSubs.length > 0;
 
-    // Auto-select first eligible subscription
     useEffect(() => {
         if (hasBookingEligibleSubs && !selectedSubscriptionId) {
-            const preferredSub =
-                bookingEligibleSubs.find((s) => s.status === "ACTIVE") ||
-                bookingEligibleSubs[0];
-            setSelectedSubscriptionId(preferredSub._id);
+            const preferred =
+                bookingEligibleSubs.find((s) => s.status === "ACTIVE") || bookingEligibleSubs[0];
+            if (preferred) setSelectedSubscriptionId(preferred._id);
         }
     }, [hasBookingEligibleSubs, bookingEligibleSubs, selectedSubscriptionId]);
 
-    // Plans for trainer (only active ones shown)
     const trainerPlans = useMemo(() => {
         const all = plansData?.subscriptionPlansForTrainer ?? [];
         return all.filter((p) => p.isActive);
     }, [plansData]);
 
-    // UX helpers
-    const dayLabel = (d: Date) =>
-        d.toLocaleDateString(undefined, {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-        });
-    const timeLabel = (d: Date) =>
-        d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-    const onPickSlot = (iso: string) => {
-        const d = new Date(iso);
-        if (isPast(d) || !isFutureWithin7Days(d)) {
+    const handleSlotSelect = (iso: string) => {
+        const start = new Date(iso);
+        if (isPast(start) || !isFutureWithin7Days(start)) {
             Alert.alert("Unavailable", "You can’t book past or out-of-window slots.");
             return;
         }
@@ -305,27 +386,21 @@ export default function TrainerDetail() {
         setConfirmOpen(true);
     };
 
-
     const onConfirmBooking = async () => {
         if (!pendingStartISO) return;
         // @ts-ignore
         if (!meData?.user?._id) return;
-
         if (!hasBookingEligibleSubs) {
-            Alert.alert(
-                "No active subscription",
-                "Please subscribe first or wait for your pending subscription to be activated."
-            );
+            Alert.alert("No active subscription", "Subscribe to a plan before booking.");
             return;
         }
         if (!selectedSubscriptionId) {
-            Alert.alert("Choose subscription", "Please select a subscription.");
+            Alert.alert("Choose subscription", "Select a subscription to continue.");
             return;
         }
 
         const start = new Date(pendingStartISO);
         const end = addMinutes(start, SLOT_DURATION_MIN);
-
         if (isPast(start) || !isFutureWithin7Days(start)) {
             Alert.alert("Unavailable", "Selected time is no longer bookable.");
             setConfirmOpen(false);
@@ -337,7 +412,7 @@ export default function TrainerDetail() {
             trainerId,
             // @ts-ignore
             clientId: meData.user._id,
-            type: sessionType, // "IN_PERSON" | "ONLINE"
+            type: sessionType,
             subscriptionId: selectedSubscriptionId,
             scheduledStart: toISO(start),
             scheduledEnd: toISO(end),
@@ -345,10 +420,7 @@ export default function TrainerDetail() {
 
         if (sessionType === "IN_PERSON") {
             if (!street.trim() || !city.trim() || !country.trim()) {
-                Alert.alert(
-                    "Address required",
-                    "Please fill Street address, City and Country."
-                );
+                Alert.alert("Address required", "Fill Street, City and Country.");
                 return;
             }
             input.location = {
@@ -371,13 +443,13 @@ export default function TrainerDetail() {
             setPendingStartISO("");
             Alert.alert("Booked", "Your session has been scheduled.");
             refetchSessions();
+            refetchSlots();
         } catch (e) {
             console.error("Booking error", e);
-            Alert.alert("Error", "Couldn't book this slot. Please try another.");
+            Alert.alert("Error", "Couldn’t book this slot. Try another.");
         }
     };
 
-    // Subscribe flow (Razorpay)
     const subscribeToPlan = async (plan: SubscriptionPlan) => {
         // @ts-ignore
         if (!meData?.user?._id) return;
@@ -392,16 +464,11 @@ export default function TrainerDetail() {
                 Alert.alert("Error", "Unable to create subscription.");
                 return;
             }
-
             const key = ENV.RZP_CLIENT_ID;
             if (!key) {
-                Alert.alert(
-                    "Missing Key",
-                    "EXPO_PUBLIC_RAZORPAY_KEY_ID is not set in your env."
-                );
+                Alert.alert("Missing key", "EXPO_PUBLIC_RAZORPAY_KEY_ID not set.");
                 return;
             }
-
             const options: any = {
                 key,
                 name: "TrainZilla",
@@ -423,47 +490,32 @@ export default function TrainerDetail() {
                 },
                 theme: { color: "#111111" },
             };
-
             await RazorpayCheckout.open(options);
-
             setPaymentSuccess(true);
             await refetchSubs();
             await refetchPlans();
         } catch (err: any) {
             console.log("Razorpay error", err?.description || err);
-            Alert.alert(
-                "Payment Failed",
-                "The payment could not be completed. Please try again."
-            );
+            Alert.alert("Payment failed", "Please try again.");
         }
     };
 
-    // Cancel subscription flow
     const handleCancelSubscription = async (subscriptionId: string) => {
         Alert.alert(
-            "Cancel Subscription",
-            "Are you sure you want to cancel this subscription? You can still use it until your current period ends.",
+            "Cancel subscription",
+            "You can continue using it until the billing cycle ends.",
             [
-                { text: "No", style: "cancel" },
+                { text: "Keep", style: "cancel" },
                 {
-                    text: "Yes, Cancel",
+                    text: "Cancel",
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            await cancelSubscription({
-                                variables: { subscriptionId },
-                            });
-                            Alert.alert(
-                                "Success",
-                                "Your cancellation request has been processed."
-                            );
+                            await cancelSubscription({ variables: { subscriptionId } });
+                            Alert.alert("Submitted", "Cancellation request sent.");
                             refetchSubs();
                         } catch (e) {
-                            console.error("Cancel error", e);
-                            Alert.alert(
-                                "Error",
-                                "Unable to process cancellation request. Please try again."
-                            );
+                            Alert.alert("Error", "Unable to cancel. Try again.");
                         }
                     },
                 },
@@ -472,983 +524,607 @@ export default function TrainerDetail() {
     };
 
     const loadingAny = meLoading || sessLoading || subLoading || slotsLoading;
+    const showInitialLoader = loadingAny && !subData;
+
+    const selectedStart = pendingStartISO ? new Date(pendingStartISO) : null;
+    const todaysSlotCount = availableCounts[formatYMD(selectedDay)] ?? 0;
+
+    const openSlotsCount = useMemo(() => {
+        return serverSlots.filter((slot) => {
+            const start = new Date(slot.startUtc);
+            return !isPast(start);
+        }).length;
+    }, [serverSlots]);
+
+    const heroStats = useMemo(
+        () => [
+            {
+                icon: "star",
+                label: "Active plans",
+                value: activeSubsForTrainer.length ? `${activeSubsForTrainer.length}` : "None",
+            },
+            {
+                icon: "clock",
+                label: "Open slots",
+                value: openSlotsCount ? `${openSlotsCount} in 7d` : "Check back",
+            },
+            {
+                icon: "calendar",
+                label: "Today",
+                value: todaysSlotCount ? `${todaysSlotCount} slots` : "Sold out",
+            },
+        ],
+        [activeSubsForTrainer.length, openSlotsCount, todaysSlotCount]
+    );
 
     return (
-        <Screen withHeader>
-            <SafeAreaView style={styles.container}>
-                <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: 28 }}
-                >
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <TouchableOpacity onPress={() => router.back()}>
-                            <FontAwesome5 name="arrow-left" size={18} color="#111" />
-                        </TouchableOpacity>
-                        <Text style={styles.headerTitle}>Book with {displayName}</Text>
-                        <View style={{ width: 18 }} />
-                    </View>
-
-                    {/* Trainer card */}
-                    <View style={[styles.section, { paddingBottom: 0 }]}>
-                        <View style={styles.trainerCard}>
-                            {avatarUrl ? (
-                                <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
-                            ) : (
-                                <View style={styles.avatar}>
-                                    <FontAwesome5 name="user-tie" size={18} color="#111" />
-                                </View>
-                            )}
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.trainerName}>{displayName}</Text>
-                                <Text style={styles.trainerMeta}>
-                                    Next 7 days • {SLOT_DURATION_MIN} min
-                                </Text>
-                            </View>
-                        </View>
-                    </View>
-
-                    {/* Payment Success Message */}
-                    {paymentSuccess && (
-                        <View style={styles.section}>
-                            <View style={styles.successCard}>
-                                <FontAwesome5 name="check-circle" size={16} color="#2E7D32" />
-                                <Text style={styles.successText}>
-                                    Payment has been processed successfully. You will be notified
-                                    once we have completed processing your subscription.
-                                </Text>
-                            </View>
-                        </View>
-                    )}
-
-                    {/* Subscriptions / Plans */}
-                    {/* Subscriptions / Plans (refined UI) */}
-                    <View style={styles.section}>
-                        <View style={styles.subCard}>
-                            <View style={styles.subCardHeader}>
-                                <Text style={styles.subCardTitle}>Your Subscriptions</Text>
-                                {loadingAny && <ActivityIndicator color="#111" />}
-                            </View>
-
-                            {!loadingAny && !hasActive && !hasPending && !hasCancelRequested ? (
-                                <>
-                                    <View style={styles.subEmpty}>
-                                        <Text style={styles.subEmptyTitle}>No active subscription</Text>
-                                        <Text style={styles.subEmptyText}>
-                                            Subscribe to a plan to unlock booking.
-                                        </Text>
-                                    </View>
-
-                                    {/* Plans */}
-                                    <View style={styles.subDivider} />
-                                    <Text style={styles.subSectionLabel}>Trainer Plans</Text>
-                                    {plansLoading ? (
-                                        <ActivityIndicator color="#111" />
-                                    ) : trainerPlans.length === 0 ? (
-                                        <View style={styles.subEmpty}>
-                                            <Text style={styles.subEmptyTitle}>No active plans</Text>
-                                            <Text style={styles.subEmptyText}>
-                                                Check back later or contact your trainer.
-                                            </Text>
-                                        </View>
-                                    ) : (
-                                        <View style={{ gap: 10 }}>
-                                            {trainerPlans.map((p) => (
-                                                <View key={p._id} style={styles.planRow}>
-                                                    <View style={{ flex: 1 }}>
-                                                        <Text style={styles.planName}>{p.name}</Text>
-                                                        <Text style={styles.planMeta}>
-                                                            {p.period} • every {p.interval}{" "}
-                                                            {p.period === "MONTHLY" ? "month(s)" : "year(s)"}
-                                                        </Text>
-                                                        {!!p.description && (
-                                                            <Text style={styles.planDesc}>{p.description}</Text>
-                                                        )}
-                                                    </View>
-                                                    <View style={{ alignItems: "flex-end" }}>
-                                                        <Text style={styles.planPrice}>₹{(p.amount / 100).toFixed(2)}</Text>
-                                                        <TouchableOpacity
-                                                            style={[styles.button, styles.primaryButton, { marginTop: 6 }]}
-                                                            onPress={() => subscribeToPlan(p)}
-                                                            disabled={creatingSub}
-                                                        >
-                                                            {creatingSub ? (
-                                                                <ActivityIndicator color="#fff" />
-                                                            ) : (
-                                                                <>
-                                                                    <FontAwesome5 name="credit-card" size={14} color="#fff" />
-                                                                    <Text style={styles.primaryButtonText}>Subscribe</Text>
-                                                                </>
-                                                            )}
-                                                        </TouchableOpacity>
-                                                    </View>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    )}
-                                </>
-                            ) : (
-                                <>
-                                    {/* Hints */}
-                                    {hasPending && (
-                                        <View style={styles.bannerWarn}>
-                                            <FontAwesome5 name="exclamation-triangle" size={12} color="#B26A00" />
-                                            <Text style={styles.bannerWarnText}>
-                                                You have pending subscriptions. Please ensure sufficient balance to activate.
-                                            </Text>
-                                        </View>
-                                    )}
-
-                                    {hasCancelRequested && (
-                                        <View style={styles.bannerInfo}>
-                                            <FontAwesome5 name="info-circle" size={12} color="#0D47A1" />
-                                            <Text style={styles.bannerInfoText}>
-                                                You’ve requested cancellation. You can keep booking until your current billing period ends.
-                                            </Text>
-                                        </View>
-                                    )}
-
-                                    {/* Subscription list */}
-                                    <View style={{ gap: 10 }}>
-                                        {bookingEligibleSubs.map((s) => {
-                                            const isActive = s.status === "ACTIVE";
-                                            const isEnding = s.status === "REQUESTED_CANCELLATION";
-                                            return (
-                                                <TouchableOpacity
-                                                    key={s._id}
-                                                    onPress={() => setSelectedSubscriptionId(s._id)}
-                                                    style={[
-                                                        styles.subItem,
-                                                        isActive && styles.subItemAccentGreen,
-                                                        isEnding && styles.subItemAccentBlue,
-                                                        selectedSubscriptionId === s._id && styles.subItemSelected,
-                                                    ]}
-                                                    activeOpacity={0.85}
-                                                >
-                                                    <View style={styles.subItemMain}>
-                                                        <FontAwesome5
-                                                            name={selectedSubscriptionId === s._id ? "dot-circle" : "circle"}
-                                                            size={14}
-                                                            color={selectedSubscriptionId === s._id ? "#111" : "#777"}
-                                                            style={{ marginRight: 10 }}
-                                                        />
-                                                        <View style={{ flex: 1 }}>
-                                                            <Text style={styles.subItemTitle}>
-                                                                Subscription #{s._id.slice(0, 6)}…
-                                                            </Text>
-                                                            <Text style={styles.subItemSub}>Plan: {s.planId.slice(0, 6)}…</Text>
-                                                            {isEnding && (
-                                                                <View style={styles.subInlineInfo}>
-                                                                    <FontAwesome5 name="calendar-check" size={11} color="#1565C0" />
-                                                                    <Text style={styles.subInlineInfoText}>
-                                                                        Booking allowed until end of current cycle
-                                                                    </Text>
-                                                                </View>
-                                                            )}
-                                                        </View>
-                                                    </View>
-
-                                                    <View style={styles.subItemRight}>
-                                                        <Text
-                                                            style={[
-                                                                styles.badge,
-                                                                isActive ? styles.badgeGreen : styles.badgeBlue,
-                                                            ]}
-                                                        >
-                                                            {isActive ? "ACTIVE" : "ENDING AFTER PERIOD"}
-                                                        </Text>
-                                                        {isActive && (
-                                                            <TouchableOpacity
-                                                                style={styles.linkButton}
-                                                                onPress={() => handleCancelSubscription(s._id)}
-                                                                disabled={cancelling}
-                                                            >
-                                                                <Text style={styles.linkButtonText}>
-                                                                    {cancelling ? "Cancelling…" : "Cancel"}
-                                                                </Text>
-                                                            </TouchableOpacity>
-                                                        )}
-                                                    </View>
-                                                </TouchableOpacity>
-                                            );
-                                        })}
-
-                                        {/* Pending (read-only) */}
-                                        {pendingSubsForTrainer.map((s) => (
-                                            <View key={s._id} style={[styles.subItem, styles.subItemAccentAmber]}>
-                                                <View style={styles.subItemMain}>
-                                                    <FontAwesome5 name="clock" size={14} color="#B26A00" style={{ marginRight: 10 }} />
-                                                    <View style={{ flex: 1 }}>
-                                                        <Text style={styles.subItemTitle}>
-                                                            Subscription #{s._id.slice(0, 6)}…
-                                                        </Text>
-                                                        <Text style={styles.subItemSub}>Plan: {s.planId.slice(0, 6)}…</Text>
-                                                        <View style={styles.subInlineWarn}>
-                                                            <FontAwesome5 name="exclamation-circle" size={11} color="#B26A00" />
-                                                            <Text style={styles.subInlineWarnText}>
-                                                                Payment is failing. Update your payment method to activate.
-                                                            </Text>
-                                                        </View>
-                                                    </View>
-                                                </View>
-                                                <Text style={[styles.badge, styles.badgeAmber]}>PENDING</Text>
-                                            </View>
-                                        ))}
-                                    </View>
-                                </>
-                            )}
-                        </View>
-                    </View>
-
-
-                    {/* ---- Booking UI (✅ visible for ACTIVE and REQUESTED_CANCELLATION) ---- */}
-                    {hasBookingEligibleSubs && (
-                        <>
-                            {/* Session type + (optional location) */}
-                            <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Session Type</Text>
-                                <View style={styles.segment}>
-                                    {(["ONLINE", "IN_PERSON"] as SessionType[]).map((t) => (
-                                        <TouchableOpacity
-                                            key={t}
-                                            onPress={() => setSessionType(t)}
-                                            style={[
-                                                styles.segmentBtn,
-                                                sessionType === t && styles.segmentBtnActive,
-                                            ]}
-                                        >
-                                            <Text
-                                                style={[
-                                                    styles.segmentText,
-                                                    sessionType === t && styles.segmentTextActive,
-                                                ]}
-                                            >
-                                                {t === "ONLINE" ? "Online" : "In-person"}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-
-                                {sessionType === "IN_PERSON" && (
-                                    <View style={{ marginTop: 12 }}>
-                                        <Text style={styles.label}>Street address *</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="House no. / Street / Road"
-                                            value={street}
-                                            onChangeText={setStreet}
-                                        />
-                                        <Text style={styles.label}>Apt, suite, unit (optional)</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="Apartment, suite, etc."
-                                            value={aptSuite}
-                                            onChangeText={setAptSuite}
-                                        />
-                                        <Text style={styles.label}>City *</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="City"
-                                            value={city}
-                                            onChangeText={setCity}
-                                        />
-                                        <Text style={styles.label}>State / Province / Region</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="State / Province / Region"
-                                            value={stateRegion}
-                                            onChangeText={setStateRegion}
-                                        />
-                                        <Text style={styles.label}>Postal code</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="Postal / ZIP"
-                                            value={postalCode}
-                                            onChangeText={setPostalCode}
-                                        />
-                                        <Text style={styles.label}>Country *</Text>
-                                        <TextInput
-                                            style={styles.input}
-                                            placeholder="Country"
-                                            value={country}
-                                            onChangeText={setCountry}
-                                        />
-                                    </View>
-                                )}
-                            </View>
-
-                            {/* Calendar strip (next 7 days) */}
-                            <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Pick a date (next 7 days)</Text>
-                                <ScrollView
-                                    horizontal
-                                    showsHorizontalScrollIndicator={false}
-                                    contentContainerStyle={{ gap: 8 }}
-                                >
-                                    {next7Days.map((d) => {
-                                        const selected = sameDay(d, selectedDay);
-                                        const count = availableCounts[formatYMD(d)] ?? 0;
-
-                                        return (
-                                            <TouchableOpacity
-                                                key={d.toDateString()}
-                                                style={[styles.dayChip, selected && styles.dayChipActive]}
-                                                onPress={() => setSelectedDay(startOfDayLocal(d))}
-                                            >
-                                                <Text
-                                                    style={[
-                                                        styles.dayChipText,
-                                                        selected && styles.dayChipTextActive,
-                                                    ]}
-                                                >
-                                                    {dayLabel(d)}
+        <Screen withHeader backgroundColor={BASE_BG}>
+            <Box flex={1} bg={BASE_BG}>
+                {showInitialLoader ? (
+                    <Box flex={1} alignItems="center" justifyContent="center" px={10}>
+                        <Spinner size="lg" color={ACCENT_PURPLE_LIGHT} />
+                        <Text color={SOFT_TEXT} mt={4} textAlign="center">
+                            Preparing booking experience...
+                        </Text>
+                    </Box>
+                ) : (
+                    <>
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={{ paddingBottom: 80 }}
+                        >
+                            <Box px={5} pt={8}>
+                                <Box borderRadius="3xl" shadow={9} overflow="hidden">
+                                    <LinearGradient
+                                        colors={["#3B1E66", "#090313"]}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={{ padding: 24, paddingBottom: 40 }}
+                                    >
+                                        <HStack justifyContent="space-between" alignItems="center">
+                                            <Pressable onPress={() => router.back()} hitSlop={12}>
+                                                <Icon as={Feather} name="arrow-left" color="white" size="lg" />
+                                            </Pressable>
+                                            <Badge bg="rgba(0,0,0,0.25)" borderRadius="full" px={3} py={1}>
+                                                <Text color="white" fontSize="xs" fontWeight="bold">
+                                                    Premium booking
                                                 </Text>
-                                                <Text
-                                                    style={[
-                                                        styles.dayChipBadge,
-                                                        count === 0 && styles.dayChipBadgeFull,
-                                                        selected && styles.dayChipBadgeActive,
-                                                    ]}
-                                                >
-                                                    {count > 0 ? `${count} slots` : "Full"}
+                                            </Badge>
+                                            <Box w={8} />
+                                        </HStack>
+                                        <HStack mt={8} space={5} alignItems="center">
+                                            <Avatar size="xl" source={avatarUrl ? { uri: avatarUrl } : undefined} bg="rgba(124,58,237,0.3)">
+                                                <Icon as={FontAwesome5} name="user-tie" color="white" size="sm" />
+                                            </Avatar>
+                                            <VStack flex={1} space={1}>
+                                                <Text color="white" fontSize="2xl" fontWeight="bold">
+                                                    {displayName}
                                                 </Text>
-                                            </TouchableOpacity>
-                                        );
-                                    })}
-                                </ScrollView>
-                            </View>
-
-                            {/* Slots for selected day */}
-                            <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Available slots</Text>
-
-                                {loadingAny ? (
-                                    <ActivityIndicator color="#111" />
-                                ) : slotsForSelected.filter((s) => !s.disabled).length === 0 ? (
-                                    <View style={styles.emptyCard}>
-                                        <Text style={styles.emptyTitle}>No available slots</Text>
-                                        <Text style={styles.emptyText}>
-                                            This day is fully booked or outside the allowed window.
+                                                <Text color={SOFT_TEXT} fontSize="sm">
+                                                    Precision coaching partner
+                                                </Text>
+                                                <Text color={SOFT_TEXT} fontSize="xs">
+                                                    Next {LOOKAHEAD_DAYS} days · {SLOT_DURATION_MIN} min blocks
+                                                </Text>
+                                            </VStack>
+                                        </HStack>
+                                        <Text color={SOFT_TEXT} mt={5} fontSize="sm">
+                                            Lock sessions with responsive slots curated by {displayName}. Pick a format, confirm, and your trainer gets instant updates.
                                         </Text>
-                                    </View>
-                                ) : (
-                                    <View style={styles.slotGrid}>
-                                        {slotsForSelected.map((slot) => {
-                                            const disabled = slot.disabled;
-                                            const label = `${timeLabel(slot.start)} – ${timeLabel(
-                                                slot.end
-                                            )}`;
-                                            return (
-                                                <TouchableOpacity
-                                                    key={slot.start.toISOString()}
-                                                    disabled={disabled}
-                                                    onPress={() => onPickSlot(slot.start.toISOString())}
-                                                    style={[
-                                                        styles.slotBtn,
-                                                        disabled
-                                                            ? styles.slotBtnDisabled
-                                                            : styles.slotBtnEnabled,
-                                                    ]}
+                                        <Flex direction="row" wrap="wrap" mt={5}>
+                                            {["Precision coaching", "Live availability", "Secure payments"].map((chip) => (
+                                                <Badge
+                                                    key={chip}
+                                                    borderRadius="full"
+                                                    bg="rgba(255,255,255,0.12)"
+                                                    px={3}
+                                                    py={1}
+                                                    mr={2}
+                                                    mb={2}
                                                 >
-                                                    <Text
-                                                        style={
-                                                            disabled
-                                                                ? styles.slotTextDisabled
-                                                                : styles.slotTextEnabled
-                                                        }
-                                                    >
-                                                        {label}
+                                                    <Text color="white" fontSize="xs" fontWeight="bold">
+                                                        {chip}
                                                     </Text>
-                                                </TouchableOpacity>
-                                            );
-                                        })}
-                                    </View>
-                                )}
-                            </View>
-
-                            {/* Notes */}
-                            <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Notes (optional)</Text>
-                                <TextInput
-                                    style={[styles.input, { height: 90 }]}
-                                    placeholder="Anything you'd like your trainer to know?"
-                                    value={notesClient}
-                                    onChangeText={setNotesClient}
-                                    multiline
-                                />
-                            </View>
-                        </>
-                    )}
-                </ScrollView>
-
-                {/* Confirm modal (eligible subs only) */}
-                {hasBookingEligibleSubs && (
-                    <Modal
-                        visible={confirmOpen}
-                        transparent
-                        animationType="fade"
-                        onRequestClose={() => setConfirmOpen(false)}
-                    >
-                        <View style={styles.modalBackdrop}>
-                            <View style={styles.modalCard}>
-                                <Text style={styles.modalTitle}>Confirm booking</Text>
-                                <Text style={styles.modalSubtitle}>
-                                    {pendingStartISO
-                                        ? new Date(pendingStartISO).toLocaleString([], {
-                                            dateStyle: "medium",
-                                            timeStyle: "short",
-                                        })
-                                        : ""}
-                                    {"  •  "}
-                                    {SLOT_DURATION_MIN} min •{" "}
-                                    {sessionType === "ONLINE" ? "Online" : "In-person"}
-                                </Text>
-
-                                {/* Subscription picker (required) */}
-                                <Text style={[styles.label, { marginTop: 10 }]}>
-                                    Select subscription
-                                </Text>
-                                <View style={{ gap: 8 }}>
-                                    {bookingEligibleSubs.map((s) => (
-                                        <TouchableOpacity
-                                            key={s._id}
-                                            onPress={() => setSelectedSubscriptionId(s._id)}
-                                            style={[
-                                                styles.subscriptionRow,
-                                                selectedSubscriptionId === s._id &&
-                                                styles.subscriptionRowActive,
-                                                s.status === "REQUESTED_CANCELLATION" &&
-                                                styles.subscriptionRowInfo,
-                                            ]}
+                                                </Badge>
+                                            ))}
+                                        </Flex>
+                                    </LinearGradient>
+                                </Box>
+                                <GlassSurface mt={-8} shadow={6} mb={4}>
+                                    <HStack space={3}>
+                                        {heroStats.map((stat) => (
+                                            <HeroStat key={stat.label} {...stat} />
+                                        ))}
+                                    </HStack>
+                                    {paymentSuccess && (
+                                        <HStack
+                                            mt={5}
+                                            space={3}
+                                            p={3}
+                                            borderRadius="2xl"
+                                            borderWidth={1}
+                                            borderColor="rgba(34,197,94,0.4)"
+                                            bg="rgba(34,197,94,0.12)"
+                                            alignItems="center"
                                         >
-                                            <FontAwesome5
-                                                name={
-                                                    selectedSubscriptionId === s._id
-                                                        ? "dot-circle"
-                                                        : "circle"
-                                                }
-                                                size={14}
-                                                color={
-                                                    selectedSubscriptionId === s._id ? "#111" : "#666"
-                                                }
-                                                style={{ marginRight: 8 }}
-                                            />
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={styles.subscriptionText}>
-                                                    Subscription #{s._id.slice(0, 6)}… • plan{" "}
-                                                    {s.planId.slice(0, 6)}…
-                                                </Text>
-                                            </View>
-                                            <Text
-                                                style={
-                                                    s.status === "ACTIVE"
-                                                        ? styles.subscriptionStatus
-                                                        : styles.subscriptionStatusInfo
-                                                }
-                                            >
-                                                {s.status === "ACTIVE"
-                                                    ? "ACTIVE"
-                                                    : "ENDING AFTER PERIOD"}
+                                            <Icon as={FontAwesome5} name="check-circle" color="#22C55E" size="sm" />
+                                            <Text color="white" flex={1} fontSize="xs">
+                                                Payment processed. We’ll notify you the moment your subscription activates.
                                             </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
+                                        </HStack>
+                                    )}
+                                </GlassSurface>
+                            </Box>
 
-                                <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
-                                    <TouchableOpacity
-                                        style={[styles.button, styles.secondaryButton, { flex: 1 }]}
-                                        onPress={() => setConfirmOpen(false)}
-                                        disabled={booking}
-                                    >
-                                        <Text style={styles.secondaryButtonText}>Cancel</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.button, styles.primaryButton, { flex: 1 }]}
+                            <Box px={5} mt={4}>
+                                <GlassSurface>
+                                    <SectionHeader
+                                        title="Your access"
+                                        subtitle="Tap the subscription that should power this booking"
+                                        actionLabel="Refresh"
+                                        onActionPress={() => {
+                                            refetchSubs();
+                                            refetchPlans();
+                                        }}
+                                    />
+                                    {!bookingEligibleSubs.length && !pendingSubsForTrainer.length && !cancelRequestedSubsForTrainer.length ? (
+                                        <VStack space={4}>
+                                            <Text color="white" fontWeight="bold">
+                                                No active subscription yet
+                                            </Text>
+                                            <Text color={SOFT_TEXT} fontSize="sm">
+                                                Choose one of the curated trainer plans below to unlock instant booking.
+                                            </Text>
+                                            <Divider bg="rgba(255,255,255,0.08)" />
+                                            {plansLoading ? (
+                                                <Spinner color={ACCENT_PURPLE_LIGHT} />
+                                            ) : trainerPlans.length === 0 ? (
+                                                <Text color={SOFT_TEXT}>Trainer hasn’t published plans yet.</Text>
+                                            ) : (
+                                                <ScrollView
+                                                    horizontal
+                                                    showsHorizontalScrollIndicator={false}
+                                                    contentContainerStyle={{ paddingVertical: 4, paddingRight: 16 }}
+                                                >
+                                                    <HStack space={4}>
+                                                        {trainerPlans.map((plan) => (
+                                                            <Box
+                                                                key={plan._id}
+                                                                borderRadius="2xl"
+                                                                borderWidth={1}
+                                                                borderColor="rgba(255,255,255,0.07)"
+                                                                overflow="hidden"
+                                                                minW="64"
+                                                            >
+                                                                <LinearGradient
+                                                                    colors={["#1C0F33", "#090312"]}
+                                                                    start={{ x: 0, y: 0 }}
+                                                                    end={{ x: 1, y: 1 }}
+                                                                    style={{ padding: 20 }}
+                                                                >
+                                                                    <VStack space={2}>
+                                                                        <Text color="white" fontWeight="bold" fontSize="md">
+                                                                            {plan.name}
+                                                                        </Text>
+                                                                        <Text color={SOFT_TEXT} fontSize="xs">
+                                                                            {plan.period} • every {plan.interval}
+                                                                        </Text>
+                                                                        {!!plan.description && (
+                                                                            <Text color={SOFT_TEXT} fontSize="xs">
+                                                                                {plan.description}
+                                                                            </Text>
+                                                                        )}
+                                                                        <Text color={ACCENT_PURPLE_LIGHT} fontWeight="bold" fontSize="xl">
+                                                                            ₹{(plan.amount / 100).toFixed(2)}
+                                                                        </Text>
+                                                                        <Button
+                                                                            mt={2}
+                                                                            bg={ACCENT_PURPLE}
+                                                                            _pressed={{ bg: ACCENT_PURPLE_DARK }}
+                                                                            _text={{ fontWeight: "bold" }}
+                                                                            onPress={() => subscribeToPlan(plan)}
+                                                                            isLoading={creatingSub}
+                                                                        >
+                                                                            Subscribe
+                                                                        </Button>
+                                                                    </VStack>
+                                                                </LinearGradient>
+                                                            </Box>
+                                                        ))}
+                                                    </HStack>
+                                                </ScrollView>
+                                            )}
+                                        </VStack>
+                                    ) : (
+                                        <VStack space={5}>
+                                            {bookingEligibleSubs.length ? (
+                                                <ScrollView
+                                                    horizontal
+                                                    showsHorizontalScrollIndicator={false}
+                                                    contentContainerStyle={{ paddingBottom: 4, paddingRight: 16 }}
+                                                >
+                                                    <HStack space={4}>
+                                                        {bookingEligibleSubs.map((sub) => {
+                                                            const meta = STATUS_LABELS[sub.status] ?? STATUS_LABELS.ACTIVE;
+                                                            const selected = selectedSubscriptionId === sub._id;
+                                                            const active = sub.status === "ACTIVE";
+                                                            return (
+                                                                <Pressable
+                                                                    key={sub._id}
+                                                                    onPress={() => setSelectedSubscriptionId(sub._id)}
+                                                                    style={{ width: 260 }}
+                                                                >
+                                                                    <Box
+                                                                        borderRadius="2xl"
+                                                                        borderWidth={selected ? 2 : 1}
+                                                                        borderColor={selected ? ACCENT_PURPLE : BORDER_COLOR}
+                                                                        bg="rgba(7,3,18,0.95)"
+                                                                        p={4}
+                                                                    >
+                                                                        <HStack justifyContent="space-between" alignItems="center">
+                                                                            <VStack flex={1} space={1}>
+                                                                                <Text color="white" fontWeight="bold">
+                                                                                    Subscription #{sub._id.slice(0, 6)}
+                                                                                </Text>
+                                                                                <Text color={SOFT_TEXT} fontSize="xs">
+                                                                                    Plan • {sub.planId.slice(0, 6)}
+                                                                                </Text>
+                                                                            </VStack>
+                                                                            <Badge bg={meta.bg} borderRadius="full" px={3} py={1}>
+                                                                                <Text color={meta.color} fontSize="xs" fontWeight="bold">
+                                                                                    {meta.label}
+                                                                                </Text>
+                                                                            </Badge>
+                                                                        </HStack>
+                                                                        <Text color={SOFT_TEXT} fontSize="xs" mt={3}>
+                                                                            Tap to route bookings through this plan.
+                                                                        </Text>
+                                                                        {active && (
+                                                                            <Button
+                                                                                mt={3}
+                                                                                variant="ghost"
+                                                                                _text={{ color: "#F87171", fontWeight: "bold" }}
+                                                                                onPress={() => handleCancelSubscription(sub._id)}
+                                                                                isLoading={cancelling}
+                                                                            >
+                                                                                Cancel subscription
+                                                                            </Button>
+                                                                        )}
+                                                                    </Box>
+                                                                </Pressable>
+                                                            );
+                                                        })}
+                                                    </HStack>
+                                                </ScrollView>
+                                            ) : (
+                                                <Box borderRadius="2xl" borderWidth={1} borderColor="rgba(251,191,36,0.4)" bg="rgba(251,191,36,0.08)" p={4}>
+                                                    <Text color="white" fontSize="sm">
+                                                        We’re waiting for your subscription to activate. Payments usually settle instantly, but can take a couple of minutes.
+                                                    </Text>
+                                                </Box>
+                                            )}
+                                            {cancelRequestedSubsForTrainer.length > 0 && (
+                                                <Box borderRadius="2xl" borderWidth={1} borderColor="rgba(96,165,250,0.4)" bg="rgba(96,165,250,0.08)" p={4}>
+                                                    <HStack space={3} alignItems="center">
+                                                        <Icon as={Feather} name="info" color="#60A5FA" />
+                                                        <Text color="white" flex={1} fontSize="xs">
+                                                            Cancellation scheduled. You can keep booking until this cycle ends.
+                                                        </Text>
+                                                    </HStack>
+                                                </Box>
+                                            )}
+                                            {pendingSubsForTrainer.length > 0 && (
+                                                <Box borderRadius="2xl" borderWidth={1} borderColor="rgba(251,191,36,0.4)" bg="rgba(251,191,36,0.08)" p={4}>
+                                                    <HStack space={3} alignItems="center">
+                                                        <Icon as={Feather} name="alert-triangle" color="#FBBF24" />
+                                                        <Text color="white" flex={1} fontSize="xs">
+                                                            Pending subscriptions detected. Update the payment method in Razorpay to activate.
+                                                        </Text>
+                                                    </HStack>
+                                                </Box>
+                                            )}
+                                        </VStack>
+                                    )}
+                                </GlassSurface>
+                            </Box>
+
+                            {hasBookingEligibleSubs && (
+                                <>
+                                    <Box px={5} mt={8}>
+                                        <GlassSurface>
+                                            <SectionHeader
+                                                title="Session format"
+                                                subtitle="Switch between online or in-person coaching"
+                                            />
+                                            <HStack
+                                                borderRadius="full"
+                                                borderWidth={1}
+                                                borderColor="rgba(255,255,255,0.08)"
+                                                p={1}
+                                                bg="rgba(255,255,255,0.02)"
+                                            >
+                                                {(["ONLINE", "IN_PERSON"] as SessionType[]).map((type) => {
+                                                    const active = sessionType === type;
+                                                    return (
+                                                        <Pressable key={type} onPress={() => setSessionType(type)} style={{ flex: 1 }}>
+                                                            <Box
+                                                                borderRadius="full"
+                                                                py={3}
+                                                                bg={active ? ACCENT_PURPLE : "transparent"}
+                                                                alignItems="center"
+                                                            >
+                                                                <Text
+                                                                    color={active ? "white" : SOFT_TEXT}
+                                                                    fontWeight="bold"
+                                                                >
+                                                                    {type === "ONLINE" ? "Online" : "In person"}
+                                                                </Text>
+                                                            </Box>
+                                                        </Pressable>
+                                                    );
+                                                })}
+                                            </HStack>
+                                            <Text color={SOFT_TEXT} fontSize="xs" mt={3}>
+                                                We’ll send confirmations and reminders the moment you confirm a slot.
+                                            </Text>
+                                            {sessionType === "IN_PERSON" && (
+                                                <VStack space={3} mt={5}>
+                                                    <Text color="white" fontWeight="bold">
+                                                        Share the session address
+                                                    </Text>
+                                                    {[
+                                                        { value: street, onChangeText: setStreet, placeholder: "Street address" },
+                                                        { value: aptSuite, onChangeText: setAptSuite, placeholder: "Apartment / Suite" },
+                                                        { value: city, onChangeText: setCity, placeholder: "City" },
+                                                        { value: stateRegion, onChangeText: setStateRegion, placeholder: "State / Region" },
+                                                        { value: postalCode, onChangeText: setPostalCode, placeholder: "Postal code" },
+                                                        { value: country, onChangeText: setCountry, placeholder: "Country" },
+                                                    ].map((field) => (
+                                                        <Box
+                                                            key={field.placeholder}
+                                                            borderRadius="xl"
+                                                            borderWidth={1}
+                                                            borderColor="rgba(255,255,255,0.08)"
+                                                            bg="rgba(3,2,8,0.8)"
+                                                            px={4}
+                                                            py={2}
+                                                        >
+                                                            <TextInput
+                                                                value={field.value}
+                                                                onChangeText={field.onChangeText}
+                                                                placeholder={field.placeholder}
+                                                                placeholderTextColor={SOFT_TEXT}
+                                                                style={{ color: "white", fontSize: 14 }}
+                                                            />
+                                                        </Box>
+                                                    ))}
+                                                </VStack>
+                                            )}
+                                        </GlassSurface>
+                                    </Box>
+
+                                    <Box px={5} mt={8}>
+                                        <GlassSurface>
+                                            <SectionHeader
+                                                title="Choose the day"
+                                                subtitle={`Live availability · ${LOOKAHEAD_DAYS}-day lookahead`}
+                                                actionLabel="Today"
+                                                onActionPress={() => setSelectedDay(startOfDayLocal(new Date()))}
+                                            />
+                                            <ScrollView
+                                                horizontal
+                                                showsHorizontalScrollIndicator={false}
+                                                contentContainerStyle={{ paddingVertical: 6, paddingRight: 12 }}
+                                            >
+                                                <HStack space={3}>
+                                                    {next7Days.map((day) => {
+                                                        const selected = sameDay(day, selectedDay);
+                                                        const count = availableCounts[formatYMD(day)] ?? 0;
+                                                        const label = day.toLocaleDateString(undefined, { weekday: "short" });
+                                                        const date = day.getDate();
+                                                        return (
+                                                            <Pressable
+                                                                key={day.toISOString()}
+                                                                onPress={() => setSelectedDay(startOfDayLocal(day))}
+                                                            >
+                                                                <Box
+                                                                    borderRadius="2xl"
+                                                                    borderWidth={1}
+                                                                    borderColor={selected ? ACCENT_PURPLE : "rgba(255,255,255,0.08)"}
+                                                                    bg={selected ? "rgba(124,58,237,0.25)" : "rgba(255,255,255,0.02)"}
+                                                                    px={4}
+                                                                    py={3}
+                                                                    alignItems="center"
+                                                                    minW={20}
+                                                                >
+                                                                    <Text color="white" fontWeight="bold">
+                                                                        {label}
+                                                                    </Text>
+                                                                    <Text color={SOFT_TEXT} fontSize="xs">
+                                                                        {date}
+                                                                    </Text>
+                                                                    <Text color={SOFT_TEXT} fontSize="xs" mt={2}>
+                                                                        {count ? `${count} slots` : "Full"}
+                                                                    </Text>
+                                                                </Box>
+                                                            </Pressable>
+                                                        );
+                                                    })}
+                                                </HStack>
+                                            </ScrollView>
+                                        </GlassSurface>
+                                    </Box>
+
+                                    <Box px={5} mt={8}>
+                                        <GlassSurface>
+                                            <SectionHeader
+                                                title="Live slots"
+                                                subtitle="Times are held for a minute while you confirm"
+                                                actionLabel="Refresh"
+                                                onActionPress={() => refetchSlots()}
+                                            />
+                                            {slotsLoading ? (
+                                                <Spinner color={ACCENT_PURPLE_LIGHT} />
+                                            ) : slotsForSelected.length === 0 ? (
+                                                <VStack space={4} alignItems="center">
+                                                    <Text color={SOFT_TEXT} textAlign="center">
+                                                        No slots found for this day. Pick another date or refresh availability.
+                                                    </Text>
+                                                    <Button
+                                                        variant="outline"
+                                                        borderColor={ACCENT_PURPLE_LIGHT}
+                                                        _text={{ color: ACCENT_PURPLE_LIGHT, fontWeight: "bold" }}
+                                                        onPress={() => refetchSlots()}
+                                                    >
+                                                        Refresh slots
+                                                    </Button>
+                                                </VStack>
+                                            ) : (
+                                                <VStack space={1}>
+                                                    {slotsForSelected.map((slot, index) => {
+                                                        const iso = slot.start.toISOString();
+                                                        const disabled = slot.disabled;
+                                                        const isLast = index === slotsForSelected.length - 1;
+                                                        return (
+                                                            <Pressable
+                                                                key={iso}
+                                                                onPress={() => handleSlotSelect(iso)}
+                                                                disabled={disabled}
+                                                            >
+                                                                <HStack space={4} alignItems="center" opacity={disabled ? 0.35 : 1} py={3}>
+                                                                    <VStack alignItems="center" space={1}>
+                                                                        <Box
+                                                                            w={2}
+                                                                            h={2}
+                                                                            borderRadius="full"
+                                                                            bg={disabled ? "rgba(255,255,255,0.2)" : ACCENT_PURPLE_LIGHT}
+                                                                        />
+                                                                        {!isLast && (
+                                                                            <Box w="1px" flex={1} bg="rgba(255,255,255,0.08)" />
+                                                                        )}
+                                                                    </VStack>
+                                                                    <Box flex={1} borderRadius="xl" borderWidth={1} borderColor="rgba(255,255,255,0.08)" bg="rgba(255,255,255,0.02)" p={3}>
+                                                                        <Text color="white" fontWeight="bold">
+                                                                            {slot.start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                                        </Text>
+                                                                        <Text color={SOFT_TEXT} fontSize="xs">
+                                                                            Ends {slot.end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                                        </Text>
+                                                                    </Box>
+                                                                    <Icon as={Feather} name="arrow-right-circle" color={ACCENT_PURPLE_LIGHT} size="md" />
+                                                                </HStack>
+                                                            </Pressable>
+                                                        );
+                                                    })}
+                                                </VStack>
+                                            )}
+                                        </GlassSurface>
+                                    </Box>
+
+                                    <Box px={5} mt={8}>
+                                        <GlassSurface>
+                                            <SectionHeader
+                                                title="Notes & context"
+                                                subtitle="Share injuries, preferences or reminders"
+                                            />
+                                            <Box
+                                                borderRadius="xl"
+                                                borderWidth={1}
+                                                borderColor="rgba(255,255,255,0.08)"
+                                                bg="rgba(3,2,8,0.85)"
+                                                px={4}
+                                                py={3}
+                                            >
+                                                <TextInput
+                                                    value={notesClient}
+                                                    onChangeText={setNotesClient}
+                                                    placeholder="Example: focus on mobility, recovering from knee surgery, love kettlebells"
+                                                    placeholderTextColor={SOFT_TEXT}
+                                                    multiline
+                                                    style={{
+                                                        minHeight: 120,
+                                                        color: "white",
+                                                        fontSize: 14,
+                                                        textAlignVertical: "top",
+                                                    }}
+                                                />
+                                            </Box>
+                                            <Text color={SOFT_TEXT} fontSize="xs" mt={2}>
+                                                Notes go straight to your trainer and help them personalize the session.
+                                            </Text>
+                                        </GlassSurface>
+                                    </Box>
+                                </>
+                            )}
+                        </ScrollView>
+
+                        <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} size="lg">
+                            <Modal.Content bg={CARD_BG} borderColor={BORDER_COLOR}>
+                                <Modal.CloseButton />
+                                <Modal.Header bg="transparent" borderBottomWidth={0}>
+                                    <Text color="white" fontWeight="bold">
+                                        Confirm booking
+                                    </Text>
+                                </Modal.Header>
+                                <Modal.Body>
+                                    {selectedStart ? (
+                                        <VStack space={3}>
+                                            <HStack justifyContent="space-between">
+                                                <Text color={SOFT_TEXT}>Trainer</Text>
+                                                <Text color="white" fontWeight="bold">
+                                                    {displayName}
+                                                </Text>
+                                            </HStack>
+                                            <HStack justifyContent="space-between">
+                                                <Text color={SOFT_TEXT}>Date</Text>
+                                                <Text color="white" fontWeight="bold">
+                                                    {selectedStart.toLocaleDateString(undefined, {
+                                                        weekday: "long",
+                                                        day: "numeric",
+                                                        month: "long",
+                                                    })}
+                                                </Text>
+                                            </HStack>
+                                            <HStack justifyContent="space-between">
+                                                <Text color={SOFT_TEXT}>Time</Text>
+                                                <Text color="white" fontWeight="bold">
+                                                    {selectedStart.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {SLOT_DURATION_MIN} min
+                                                </Text>
+                                            </HStack>
+                                            {sessionType === "IN_PERSON" && (
+                                                <Box mt={2}>
+                                                    <Text color={SOFT_TEXT} fontSize="xs">
+                                                        Location
+                                                    </Text>
+                                                    <Text color="white">
+                                                        {street}
+                                                        {aptSuite ? `, ${aptSuite}` : ""}
+                                                        {`\n${city}${stateRegion ? `, ${stateRegion}` : ""}`}
+                                                        {postalCode ? ` ${postalCode}` : ""}
+                                                        {`\n${country}`}
+                                                    </Text>
+                                                </Box>
+                                            )}
+                                        </VStack>
+                                    ) : null}
+                                </Modal.Body>
+                                <Modal.Footer borderTopWidth={0}>
+                                    <Button
+                                        flex={1}
+                                        bg={ACCENT_PURPLE}
+                                        _pressed={{ bg: ACCENT_PURPLE_DARK }}
+                                        _text={{ fontWeight: "bold" }}
                                         onPress={onConfirmBooking}
-                                        disabled={booking || !selectedSubscriptionId}
+                                        isLoading={booking}
                                     >
-                                        {booking ? (
-                                            <ActivityIndicator color="#fff" />
-                                        ) : (
-                                            <>
-                                                <FontAwesome5 name="check" size={14} color="#fff" />
-                                                <Text style={styles.primaryButtonText}>Book</Text>
-                                            </>
-                                        )}
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </View>
-                    </Modal>
+                                        Confirm booking
+                                    </Button>
+                                </Modal.Footer>
+                            </Modal.Content>
+                        </Modal>
+                    </>
                 )}
-            </SafeAreaView>
+            </Box>
         </Screen>
     );
 }
-
-/* ===================== Styles ===================== */
-
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#f5f5f5" },
-
-    header: {
-        paddingHorizontal: 16,
-        paddingTop: 12,
-        paddingBottom: 8,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        backgroundColor: "#fff",
-        borderBottomWidth: 1,
-        borderBottomColor: "#eee",
-    },
-    headerTitle: { fontSize: 18, fontWeight: "700", color: "#111" },
-
-    section: { padding: 16 },
-    sectionTitle: {
-        fontSize: 13,
-        fontWeight: "700",
-        color: "#999",
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        marginBottom: 10,
-    },
-
-    trainerCard: {
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-        borderWidth: 1,
-        borderColor: "#eee",
-    },
-    avatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        backgroundColor: "#EAEAEA",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    avatarImg: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        backgroundColor: "#EAEAEA",
-    },
-    trainerName: { fontSize: 16, fontWeight: "700", color: "#111" },
-    trainerMeta: { fontSize: 12, color: "#777", marginTop: 2 },
-
-    // Success / warning / info
-    successCard: {
-        backgroundColor: "#E8F5E8",
-        borderRadius: 12,
-        padding: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        borderWidth: 1,
-        borderColor: "#4CAF50",
-    },
-    successText: { fontSize: 13, color: "#2E7D32", flex: 1 },
-
-    warningCard: {
-        backgroundColor: "#FFF8E1",
-        borderRadius: 12,
-        padding: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        borderWidth: 1,
-        borderColor: "#FFC107",
-    },
-    warningText: { fontSize: 13, color: "#F57C00", flex: 1 },
-
-    infoCard: {
-        backgroundColor: "#E3F2FD",
-        borderRadius: 12,
-        padding: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-        borderWidth: 1,
-        borderColor: "#90CAF9",
-    },
-    infoText: { fontSize: 13, color: "#1565C0", flex: 1 },
-
-    // Calendar chips
-    dayChip: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        backgroundColor: "#fff",
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: "#eee",
-        alignItems: "center",
-        gap: 6,
-        minWidth: 120,
-    },
-    dayChipActive: { backgroundColor: "#111", borderColor: "#111" },
-    dayChipText: { fontSize: 14, fontWeight: "700", color: "#111" },
-    dayChipTextActive: { color: "#fff" },
-    dayChipBadge: {
-        fontSize: 12,
-        fontWeight: "700",
-        color: "#111",
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        backgroundColor: "#F2F2F2",
-        borderRadius: 8,
-    },
-    dayChipBadgeActive: {
-        backgroundColor: "#fff",
-        color: "#111",
-    },
-    dayChipBadgeFull: {
-        backgroundColor: "#FBEAEA",
-        color: "#C62828",
-    },
-
-    // Slots
-    slotGrid: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 8,
-    },
-    slotBtn: {
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderRadius: 10,
-        minWidth: "30%",
-        alignItems: "center",
-        borderWidth: 1,
-    },
-    slotBtnEnabled: { backgroundColor: "#fff", borderColor: "#111" },
-    slotBtnDisabled: { backgroundColor: "#F6F6F6", borderColor: "#E5E5E5" },
-    slotTextEnabled: { color: "#111", fontWeight: "700" },
-    slotTextDisabled: { color: "#aaa" },
-
-    // Inputs & toggles
-    segment: { flexDirection: "row", gap: 8 },
-    segmentBtn: {
-        flex: 1,
-        paddingVertical: 10,
-        borderRadius: 8,
-        backgroundColor: "#f2f2f2",
-        alignItems: "center",
-    },
-    segmentBtnActive: { backgroundColor: "#111" },
-    segmentText: { fontSize: 13, fontWeight: "700", color: "#333" },
-    segmentTextActive: { color: "#fff" },
-
-    label: { fontSize: 13, fontWeight: "700", color: "#333", marginBottom: 6 },
-    input: {
-        borderWidth: 1,
-        borderColor: "#e5e5e5",
-        borderRadius: 8,
-        padding: 12,
-        fontSize: 16,
-        backgroundColor: "#fafafa",
-        marginBottom: 8,
-    },
-
-    // Empty states & badges
-    emptyCard: {
-        backgroundColor: "#fff",
-        padding: 14,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#eee",
-    },
-    emptyTitle: { fontSize: 14, fontWeight: "700", color: "#333", marginBottom: 4 },
-    emptyText: { fontSize: 13, color: "#666" },
-
-    // Subscriptions
-    subscriptionCard: {
-        backgroundColor: "#fff",
-        borderWidth: 1,
-        borderColor: "#eee",
-        borderRadius: 12,
-        paddingVertical: 14,
-        paddingHorizontal: 16,
-        marginBottom: 10,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    subscriptionCardActive: {
-        borderColor: "#111",
-        backgroundColor: "#FAFAFA",
-        borderWidth: 2,
-    },
-    subscriptionCardPending: {
-        borderColor: "#FFC107",
-        backgroundColor: "#FFFCF0",
-    },
-    // neutral style for cancel-requested
-    subscriptionCardInfo: {
-        borderColor: "#90CAF9",
-        backgroundColor: "#EAF4FF",
-    },
-    subscriptionSelectArea: {
-        flexDirection: "row",
-        alignItems: "flex-start",
-        flex: 1,
-    },
-    subscriptionText: {
-        fontSize: 14,
-        color: "#111",
-        fontWeight: "700",
-        marginBottom: 2,
-    },
-    subscriptionPlan: {
-        fontSize: 12,
-        color: "#666",
-        marginBottom: 4,
-    },
-    subscriptionEndDateInfo: {
-        fontSize: 11,
-        color: "#1565C0",
-        marginTop: 4,
-        lineHeight: 16,
-    },
-    subscriptionWarning: {
-        fontSize: 11,
-        color: "#F57C00",
-        marginTop: 4,
-        lineHeight: 16,
-    },
-    subscriptionActions: {
-        alignItems: "flex-end",
-        gap: 8,
-    },
-    subscriptionStatusBadge: {
-        fontSize: 11,
-        color: "#fff",
-        backgroundColor: "#2E7D32",
-        fontWeight: "700",
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 6,
-    },
-    subscriptionStatusBadgePending: {
-        fontSize: 11,
-        color: "#fff",
-        backgroundColor: "#F57C00",
-        fontWeight: "700",
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 6,
-    },
-    // neutral badge for cancel-requested
-    subscriptionStatusBadgeInfo: {
-        fontSize: 11,
-        color: "#fff",
-        backgroundColor: "#1565C0",
-        fontWeight: "700",
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 6,
-    },
-
-    subscriptionRow: {
-        backgroundColor: "#fff",
-        borderWidth: 1,
-        borderColor: "#eee",
-        borderRadius: 10,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        flexDirection: "row",
-        alignItems: "center",
-    },
-    subscriptionRowActive: { borderColor: "#111", backgroundColor: "#1110" },
-    // neutral option style in modal
-    subscriptionRowInfo: { borderColor: "#90CAF9", backgroundColor: "#EAF4FF" },
-
-    subscriptionStatus: { fontSize: 12, color: "#2E7D32", fontWeight: "700" },
-    subscriptionStatusInfo: { fontSize: 12, color: "#1565C0", fontWeight: "700" },
-
-    // Plans
-    planCard: {
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: "#eee",
-        flexDirection: "row",
-        gap: 10,
-        alignItems: "center",
-    },
-    planName: { fontSize: 15, fontWeight: "700", color: "#111" },
-    planMeta: { fontSize: 12, color: "#555", marginTop: 2 },
-    planDesc: { fontSize: 12, color: "#666", marginTop: 6 },
-    planPrice: { fontSize: 16, fontWeight: "800", color: "#111" },
-
-    // Modal
-    modalBackdrop: {
-        flex: 1,
-        backgroundColor: "rgba(0,0,0,0.35)",
-        justifyContent: "center",
-        padding: 16,
-    },
-    modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 16 },
-    modalTitle: { fontSize: 16, fontWeight: "700", color: "#111" },
-    modalSubtitle: { fontSize: 12, color: "#666", marginTop: 4 },
-    button: {
-        flexDirection: "row",
-        gap: 8,
-        alignItems: "center",
-        justifyContent: "center",
-        paddingVertical: 12,
-        paddingHorizontal: 14,
-        borderRadius: 10,
-    },
-    primaryButton: { backgroundColor: "#111" },
-    primaryButtonText: {
-        color: "#fff",
-        fontSize: 14,
-        fontWeight: "700",
-        marginLeft: 8,
-    },
-    secondaryButton: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#111" },
-    secondaryButtonText: { color: "#111", fontSize: 14, fontWeight: "700" },
-    cancelButton: {
-        backgroundColor: "#fff",
-        borderWidth: 1,
-        borderColor: "#C62828",
-        paddingVertical: 6,
-        paddingHorizontal: 12,
-        borderRadius: 6,
-        marginTop: 4,
-    },
-    cancelButtonText: {
-        color: "#C62828",
-        fontSize: 12,
-        fontWeight: "700",
-    },
-    /* ===== Subscriptions Card (refined) ===== */
-    subCard: {
-        backgroundColor: "#fff",
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: "#eee",
-        padding: 14,
-        gap: 12,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
-    },
-    subCardHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-    },
-    subCardTitle: { fontSize: 16, fontWeight: "800", color: "#111" },
-
-    subEmpty: { backgroundColor: "#FAFAFA", borderRadius: 10, padding: 14, borderWidth: 1, borderColor: "#f0f0f0" },
-    subEmptyTitle: { fontSize: 14, color: "#333", fontWeight: "700", marginBottom: 4 },
-    subEmptyText: { fontSize: 13, color: "#666" },
-
-    subDivider: { height: 1, backgroundColor: "#f0f0f0", marginVertical: 8 },
-    subSectionLabel: { fontSize: 12, color: "#999", fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
-
-    /* Plans (re-uses your plan styles but tighter row) */
-    planRow: {
-        backgroundColor: "#fff",
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: "#eee",
-        padding: 12,
-        flexDirection: "row",
-        gap: 10,
-        alignItems: "center",
-    },
-
-    /* Banners */
-    bannerWarn: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        padding: 10,
-        borderRadius: 10,
-        backgroundColor: "#FFF7E6",
-        borderWidth: 1,
-        borderColor: "#FFE0A3",
-    },
-    bannerWarnText: { fontSize: 12, color: "#8A5300", flex: 1, lineHeight: 16 },
-
-    bannerInfo: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        padding: 10,
-        borderRadius: 10,
-        backgroundColor: "#EAF4FF",
-        borderWidth: 1,
-        borderColor: "#CFE7FF",
-    },
-    bannerInfoText: { fontSize: 12, color: "#0D47A1", flex: 1, lineHeight: 16 },
-
-    /* Items */
-    subItem: {
-        backgroundColor: "#fff",
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: "#eee",
-        padding: 12,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
-    },
-    /* left accent by status */
-    subItemAccentGreen: { borderLeftWidth: 3, borderLeftColor: "#2E7D32" },
-    subItemAccentBlue: { borderLeftWidth: 3, borderLeftColor: "#1565C0" },
-    subItemAccentAmber: { borderLeftWidth: 3, borderLeftColor: "#B26A00" },
-
-    /* selected */
-    subItemSelected: { borderColor: "#111" },
-
-    subItemMain: { flexDirection: "row", alignItems: "flex-start", flex: 1 },
-    subItemRight: { alignItems: "flex-end", gap: 8 },
-
-    subItemTitle: { fontSize: 14, fontWeight: "700", color: "#111" },
-    subItemSub: { fontSize: 12, color: "#666", marginTop: 2 },
-
-    subInlineInfo: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
-    subInlineInfoText: { fontSize: 11, color: "#1565C0" },
-    subInlineWarn: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
-    subInlineWarnText: { fontSize: 11, color: "#8A5300" },
-
-    /* Chips */
-    badge: {
-        fontSize: 11,
-        fontWeight: "800",
-        color: "#fff",
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 999,
-        overflow: "hidden",
-        letterSpacing: 0.3,
-    },
-    badgeGreen: { backgroundColor: "#2E7D32" },
-    badgeBlue: { backgroundColor: "#1565C0" },
-    badgeAmber: { backgroundColor: "#B26A00" },
-
-    /* Linky action */
-    linkButton: {
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-        borderRadius: 8,
-        backgroundColor: "#FFF0F0",
-        borderWidth: 1,
-        borderColor: "#FFD6D6",
-    },
-    linkButtonText: { color: "#C62828", fontSize: 12, fontWeight: "700" },
-});

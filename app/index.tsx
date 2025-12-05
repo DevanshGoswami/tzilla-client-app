@@ -1,9 +1,9 @@
-console.log("[Index] file evaluated");
-
-
 import { useEffect, useState } from "react";
 import { Redirect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+
+
+console.log("[Index] file evaluated");
 
 export default function Index() {
     const [ready, setReady] = useState(false);

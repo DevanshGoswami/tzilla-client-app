@@ -8,9 +8,7 @@ import {
     Button,
     Avatar,
     Badge,
-    Card,
     Skeleton,
-    Heading,
     Pressable,
     Divider,
 } from "native-base";
@@ -19,10 +17,8 @@ import { gql } from "@apollo/client";
 import { GET_ME } from "@/graphql/queries";
 import { router } from "expo-router";
 import { useSteps } from "@/hooks/useSteps";
+import { Ionicons } from "@expo/vector-icons";
 
-/* ================================
-   GraphQL (recent sessions)
-================================ */
 const SESSIONS_FOR_CLIENT = gql`
     query SessionsForClient($clientId: ID!, $pageNumber: Int!, $pageSize: Int!) {
         sessionsForClient(clientId: $clientId, pagination: { pageNumber: $pageNumber, pageSize: $pageSize }) {
@@ -38,7 +34,6 @@ const SESSIONS_FOR_CLIENT = gql`
     }
 `;
 
-
 const PROGRESS_REPORT = gql`
     query ProgressReport($userId: ID!, $range: ProgressRange) {
         progressReport(userId: $userId, range: $range) {
@@ -50,175 +45,173 @@ const PROGRESS_REPORT = gql`
     }
 `;
 
-// small helpers
 function parseDateSafe(input?: string | number | null): Date | null {
     if (!input) return null;
     const d = new Date(String(input));
     return isNaN(d.getTime()) ? null : d;
 }
 
-/* ================================
-   Small bits
-================================ */
-function StatsCard({
-                       title,
-                       value,
-                       subtitle,
-                       icon,
-                       colorScheme = "primary",
-                   }: {
-    title: string;
-    value: string;
-    subtitle?: string;
-    icon: string;
-    colorScheme?: string;
-}) {
+function Pill({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
     return (
-        <Card flex={1} p={4} bg="white" rounded="xl" shadow={2}>
-            <VStack space={2}>
-                <HStack justifyContent="space-between" alignItems="center">
-                    <Text fontSize="sm" color="gray.500" fontWeight="medium">
-                        {title}
-                    </Text>
-                    <Text fontSize="2xl">{icon}</Text>
-                </HStack>
-                <Text fontSize="2xl" fontWeight="bold" color={`${colorScheme}.600`}>
+        <HStack
+            space={2}
+            alignItems="center"
+            px={3}
+            py={2}
+            borderRadius={999}
+            bg="rgba(255,255,255,0.08)"
+            borderWidth={1}
+            borderColor="rgba(255,255,255,0.12)"
+        >
+            <Ionicons name={icon} size={16} color="#C4B5FD" />
+            <Text fontSize="xs" color="coolGray.300">
+                {label} · {" "}
+                <Text fontWeight="bold" color="white">
                     {value}
                 </Text>
-                {subtitle ? <Text fontSize="xs" color="gray.400">{subtitle}</Text> : null}
-            </VStack>
-        </Card>
+            </Text>
+        </HStack>
     );
 }
 
-function ActionButton({
-                          title,
-                          subtitle,
-                          icon,
-                          onPress,
-                          colorScheme = "primary",
-                      }: {
-    title: string;
-    subtitle?: string;
-    icon: string;
-    onPress: () => void;
-    colorScheme?: string;
-}) {
+function SectionHeader({ icon, title, actionLabel, onAction }: { icon: keyof typeof Ionicons.glyphMap; title: string; actionLabel?: string; onAction?: () => void }) {
     return (
-        <Pressable onPress={onPress}>
-            <Card p={4} bg="white" rounded="xl" shadow={1}>
-                <HStack space={3} alignItems="center">
-                    <Box bg={`${colorScheme}.100`} p={3} rounded="full">
-                        <Text fontSize="xl">{icon}</Text>
-                    </Box>
-                    <VStack flex={1}>
-                        <Text fontSize="md" fontWeight="semibold" color="gray.800">
-                            {title}
-                        </Text>
-                        {subtitle ? <Text fontSize="sm" color="gray.500">{subtitle}</Text> : null}
-                    </VStack>
-                    <Text color="gray.400" fontSize="lg">›</Text>
-                </HStack>
-            </Card>
+        <HStack justifyContent="space-between" alignItems="center" mb={2}>
+            <HStack alignItems="center" space={2}>
+                <Box w={8} h={8} rounded="full" bg="rgba(124,58,237,0.15)" alignItems="center" justifyContent="center">
+                    <Ionicons name={icon} size={16} color="#C4B5FD" />
+                </Box>
+                <Text fontSize="md" fontWeight="bold" color="white">
+                    {title}
+                </Text>
+            </HStack>
+            {actionLabel && onAction ? (
+                <Pressable onPress={onAction}>
+                    <Text fontSize="xs" color="coolGray.300">
+                        {actionLabel}
+                    </Text>
+                </Pressable>
+            ) : null}
+        </HStack>
+    );
+}
+
+function MetricCard({ title, value, subtitle, icon }: { title: string; value: string; subtitle?: string; icon: keyof typeof Ionicons.glyphMap }) {
+    return (
+        <VStack
+            flex={1}
+            p={4}
+            rounded="2xl"
+            bg={{
+                linearGradient: {
+                    colors: ["rgba(124,58,237,0.25)", "rgba(15,17,26,0.8)"],
+                    start: [0, 0],
+                    end: [1, 1],
+                },
+            }}
+            borderWidth={1}
+            borderColor="rgba(255,255,255,0.08)"
+            space={3}
+        >
+            <HStack justifyContent="space-between" alignItems="center">
+                <VStack>
+                    <Text fontSize="xs" color="coolGray.300">
+                        {title}
+                    </Text>
+                    <Text fontSize="2xl" fontWeight="bold" color="white">
+                        {value}
+                    </Text>
+                </VStack>
+                <Box bg="rgba(124,58,237,0.2)" rounded="full" p={2}>
+                    <Ionicons name={icon} size={20} color="#C4B5FD" />
+                </Box>
+            </HStack>
+            {subtitle ? <Text fontSize="xs" color="coolGray.400">{subtitle}</Text> : null}
+        </VStack>
+    );
+}
+
+function ActionButton({ title, subtitle, icon, onPress }: { title: string; subtitle?: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) {
+    return (
+        <Pressable onPress={onPress} style={{ flex: 1 }}>
+            <VStack p={4} rounded="2xl" borderWidth={1} borderColor="rgba(255,255,255,0.08)" bg="#0F111A" space={3}>
+                <Box bg="rgba(124,58,237,0.15)" rounded="full" w={10} h={10} alignItems="center" justifyContent="center">
+                    <Ionicons name={icon} size={20} color="#C4B5FD" />
+                </Box>
+                <Text fontSize="md" fontWeight="semibold" color="white">
+                    {title}
+                </Text>
+                {subtitle ? <Text fontSize="xs" color="coolGray.400">{subtitle}</Text> : null}
+            </VStack>
         </Pressable>
     );
 }
 
-/* --- Steps mini chart (7 bars) --- */
 function SevenDayBars({ data }: { data: { date: string; value: number }[] }) {
     const max = Math.max(1, ...data.map((d) => d.value));
     return (
         <HStack space={1} alignItems="flex-end">
             {data.map((d) => {
-                const h = Math.max(4, Math.round((d.value / max) * 40)); // 0–40 px
-                return (
-                    <Box
-                        key={d.date}
-                        w={3}
-                        h={h}
-                        bg="info.500"
-                        rounded="sm"
-                        opacity={d.value === 0 ? 0.35 : 0.9}
-                    />
-                );
+                const h = Math.max(4, Math.round((d.value / max) * 40));
+                return <Box key={d.date} w={3} h={h} bg="info.500" rounded="sm" opacity={d.value === 0 ? 0.35 : 0.9} />;
             })}
         </HStack>
     );
 }
 
-// function StepsCard() {
-//     // const { today, last7, weeklyTotal, loading, error, available } = useSteps();
-//
-//     return (
-//         <Card p={4} bg="white" rounded="xl" shadow={2}>
-//             <VStack space={2}>
-//                 <HStack justifyContent="space-between" alignItems="center">
-//                     <Text fontSize="sm" color="gray.500" fontWeight="medium">
-//                         Steps
-//                     </Text>
-//                     <Text fontSize="xl">🚶</Text>
-//                 </HStack>
-//
-//                 {loading ? (
-//                     <Skeleton h="6" w="40%" rounded="lg" />
-//                 ) : (
-//                     <HStack alignItems="baseline" space={2}>
-//                         <Text fontSize="2xl" fontWeight="bold" color="info.600">
-//                             {today != null ? today.toLocaleString() : "—"}
-//                         </Text>
-//                         <Text fontSize="xs" color="gray.400">today</Text>
-//                     </HStack>
-//                 )}
-//
-//                 {error ? (
-//                     <Text fontSize="xs" color="red.500">{error}</Text>
-//                 ) : available === false ? (
-//                     <Text fontSize="xs" color="gray.500">Pedometer not available on this device.</Text>
-//                 ) : null}
-//
-//                 {!loading && last7.length ? (
-//                     <VStack space={1} mt={2}>
-//                         <SevenDayBars data={last7} />
-//                         <HStack justifyContent="space-between">
-//                             <Text fontSize="xs" color="gray.500">
-//                                 7-day total:{" "}
-//                                 <Text fontWeight="semibold" color="gray.700">
-//                                     {weeklyTotal.toLocaleString()}
-//                                 </Text>
-//                             </Text>
-//                             <Text fontSize="xs" color="gray.400">
-//                                 {last7[0].date.slice(5)} → {last7[last7.length - 1].date.slice(5)}
-//                             </Text>
-//                         </HStack>
-//                     </VStack>
-//                 ) : null}
-//             </VStack>
-//         </Card>
-//     );
-// }
+function StepsCard() {
+    const { today, last7, weeklyTotal, loading, error, available } = useSteps();
+    const unavailable = available === false;
 
-/* ================================
-   Home Screen
-================================ */
+    return (
+        <VStack p={4} rounded="2xl" borderWidth={1} borderColor="rgba(255,255,255,0.08)" bg="#0F111A" space={3}>
+            <SectionHeader icon="walk-outline" title="Steps overview" />
+            {loading ? (
+                <Skeleton h="6" w="40%" rounded="lg" bg="rgba(255,255,255,0.1)" />
+            ) : (
+                <HStack alignItems="baseline" space={2}>
+                    <Text fontSize="3xl" fontWeight="bold" color="white">
+                        {today != null ? today.toLocaleString() : "—"}
+                    </Text>
+                    <Text fontSize="xs" color="coolGray.400">
+                        today
+                    </Text>
+                </HStack>
+            )}
+            {error ? (
+                <Text fontSize="xs" color="red.400">
+                    {error}
+                </Text>
+            ) : unavailable ? (
+                <Text fontSize="xs" color="coolGray.500">
+                    Step tracking isn’t available on this device.
+                </Text>
+            ) : null}
+            {!loading && !error && !unavailable && last7.length ? (
+                <VStack space={1} mt={2}>
+                    <SevenDayBars data={last7} />
+                    <HStack justifyContent="space-between">
+                        <Text fontSize="xs" color="coolGray.400">
+                            7-day total: {" "}
+                            <Text fontWeight="semibold" color="white">
+                                {weeklyTotal.toLocaleString()}
+                            </Text>
+                        </Text>
+                        <Text fontSize="xs" color="coolGray.500">
+                            {last7[0].date.slice(5)} → {last7[last7.length - 1].date.slice(5)}
+                        </Text>
+                    </HStack>
+                </VStack>
+            ) : null}
+        </VStack>
+    );
+}
+
 export default function Home() {
-
-    console.log('c a m e  h e r e ')
-    // Primary profile data
     const { data, loading, error, refetch } = useQuery(GET_ME);
-
-    // Pull userId for sessions query
     // @ts-ignore
     const userId: string | undefined = data?.user?._id;
 
-    // helpers near top of file
-    const isoDay = (d: Date) => d.toISOString().slice(0, 10);
-    const daysAgoISO = (n: number) => {
-        const d = new Date();
-        d.setDate(d.getDate() - n);
-        return isoDay(d);
-    };
-
-    // Recent sessions (show last 5, any status)
     const sess = useQuery(SESSIONS_FOR_CLIENT, {
         variables: { clientId: userId as string, pageNumber: 1, pageSize: 20 },
         skip: !userId,
@@ -226,71 +219,51 @@ export default function Home() {
     });
 
     const pr = useQuery(PROGRESS_REPORT, {
-        variables: {
-            userId: userId as string,
-            range: {
-                fromISO: daysAgoISO(6),  // 6 days ago today = 7-day window
-                toISO: isoDay(new Date()),
-            },
-        },
+        variables: { userId: userId as string },
+        skip: !userId,
         fetchPolicy: "no-cache",
     });
 
     const allSessions = (sess.data?.sessionsForClient ?? []).slice();
-    const totalSessions = allSessions.filter(session => session.status === "CONFIRMED").length;
+    const totalSessions = allSessions.filter((session) => session.status === "CONFIRMED").length;
 
-// only last 2 CONFIRMED sessions (newest first)
     const confirmedSessions = allSessions
         .filter((s: any) => s.status === "CONFIRMED")
-        .sort(
-            (a: any, b: any) =>
-                new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime()
-        )
+        .sort((a: any, b: any) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime())
         .slice(0, 2);
 
-// weight lost = startWeight - latestWeight (from progressReport)
     const sortedProgress = (pr.data?.progressReport ?? [])
         .slice()
-        .sort((a: any, b: any) => {
-            const da = parseDateSafe(a.dateISO)?.getTime() ?? 0;
-            const db = parseDateSafe(b.dateISO)?.getTime() ?? 0;
-            return da - db; // oldest -> newest
-        });
+        .sort((a: any, b: any) => (parseDateSafe(a.dateISO)?.getTime() ?? 0) - (parseDateSafe(b.dateISO)?.getTime() ?? 0));
     const startW = sortedProgress[0]?.weightKg;
     const latestW = sortedProgress[sortedProgress.length - 1]?.weightKg;
-    const weightLost = (typeof startW === "number" && typeof latestW === "number")
-        ? Math.max(0, Number((startW - latestW).toFixed(1)))
-        : null;
+    const weightLost =
+        typeof startW === "number" && typeof latestW === "number"
+            ? Math.max(0, Number((startW - latestW).toFixed(1)))
+            : null;
 
-    if (loading) {
-        return (
-            <Box flex={1} bg="gray.50" safeAreaTop>
-                <VStack p={6} space={4}>
-                    <HStack space={3} alignItems="center">
-                        <Skeleton size={12} rounded="full" />
-                        <VStack flex={1} space={1}>
-                            <Skeleton h={4} w="60%" />
-                            <Skeleton h={3} w="40%" />
-                        </VStack>
-                    </HStack>
-                    <HStack space={3}>
-                        <Skeleton flex={1} h={24} rounded="xl" />
-                        <Skeleton flex={1} h={24} rounded="xl" />
-                    </HStack>
-                    <Skeleton h={20} rounded="xl" />
-                    <Skeleton h={20} rounded="xl" />
-                </VStack>
-            </Box>
-        );
-    }
+    const renderSkeleton = () => (
+        <Box flex={1} bg="#05060A" safeAreaTop>
+            <VStack p={6} space={4}>
+                <Skeleton h={40} rounded="2xl" bg="rgba(255,255,255,0.05)" />
+                <HStack space={4}>
+                    <Skeleton flex={1} h={24} rounded="2xl" bg="rgba(255,255,255,0.05)" />
+                    <Skeleton flex={1} h={24} rounded="2xl" bg="rgba(255,255,255,0.05)" />
+                </HStack>
+                <Skeleton h={20} rounded="2xl" bg="rgba(255,255,255,0.05)" />
+            </VStack>
+        </Box>
+    );
+
+    if (loading) return renderSkeleton();
 
     if (error) {
         return (
-            <Box flex={1} justifyContent="center" alignItems="center" p={6} bg="gray.50">
-                <Text color="red.500" fontSize="lg" textAlign="center">
+            <Box flex={1} justifyContent="center" alignItems="center" p={6} bg="#05060A">
+                <Text color="red.400" fontSize="lg" textAlign="center">
                     Unable to load your dashboard.
                 </Text>
-                <Button mt={4} onPress={() => refetch()}>
+                <Button mt={4} onPress={() => refetch()} bg="#7C3AED" _text={{ color: "white" }}>
                     Retry
                 </Button>
             </Box>
@@ -300,141 +273,180 @@ export default function Home() {
     // @ts-ignore
     const user = data?.user;
     const name: string = user?.name ?? "Athlete";
-    const stats = user?.stats;
 
-    // Sessions (sorted newest first, just take a few)
     const sessions = (sess.data?.sessionsForClient ?? [])
         .slice()
-        .sort(
-            (a: any, b: any) =>
-                new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime()
-        )
+        .sort((a: any, b: any) => new Date(b.scheduledStart).getTime() - new Date(a.scheduledStart).getTime())
         .slice(0, 5);
 
     return (
-        <Box flex={1} bg="gray.50" safeAreaTop>
-            <ScrollView flex={1} showsVerticalScrollIndicator={false}>
+        <Box flex={1} bg="#05060A" safeAreaTop>
+            <ScrollView flex={1} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
                 <VStack space={6} p={6}>
-                    {/* Header */}
-                    <HStack justifyContent="space-between" alignItems="center">
-                        <VStack>
-                            <Text fontSize="sm" color="gray.500">Welcome back,</Text>
-                            <Heading size="lg" color="gray.800">{name} 👋</Heading>
-                        </VStack>
-                        <Avatar
-                            size="md"
-                            source={user?.avatar ? { uri: user.avatar } : undefined}
-                            bg="primary.500"
-                        >
-                            {name.charAt(0).toUpperCase()}
-                        </Avatar>
+                    <Box
+                        p={5}
+                        rounded="3xl"
+                        bg={{
+                            linearGradient: {
+                                colors: ["rgba(124,58,237,0.35)", "rgba(8,9,18,0.95)"],
+                                start: [0, 0],
+                                end: [1, 1],
+                            },
+                        }}
+                        borderWidth={1}
+                        borderColor="rgba(255,255,255,0.1)"
+                    >
+                        <HStack justifyContent="space-between" alignItems="center">
+                            <VStack space={2} flex={1} pr={4}>
+                                <Text fontSize="xs" color="coolGray.200">
+                                    Welcome back,
+                                </Text>
+                                <Text fontSize="lg" color="white" fontWeight="bold">
+                                    {name} 👋
+                                </Text>
+                                <Text fontSize="sm" color="coolGray.400">
+                                    Keep the momentum going. Your coach synced your latest plan this morning.
+                                </Text>
+                            </VStack>
+                            <Avatar size="md" source={user?.avatar ? { uri: user.avatar } : undefined} bg="#7C3AED">
+                                {name.charAt(0).toUpperCase()}
+                            </Avatar>
+                        </HStack>
+                        <HStack mt={4} space={3}>
+                            <Pill icon="flame-outline" label="Consistency" value={`${totalSessions} sessions`} />
+                            <Pill icon="trophy-outline" label="Goal" value={user?.stats?.goal ?? "—"} />
+                        </HStack>
+                    </Box>
+
+                    <HStack space={4}>
+                        <MetricCard
+                            title="Sessions"
+                            value={sess.loading ? "…" : String(totalSessions)}
+                            subtitle="Total confirmed"
+                            icon="calendar-outline"
+                        />
+                        <MetricCard
+                            title="Weight lost"
+                            value={pr.loading ? "…" : weightLost != null ? `${weightLost} kg` : "—"}
+                            subtitle="Since day one"
+                            icon="fitness-outline"
+                        />
                     </HStack>
 
-                    {/* Overview */}
-                    <VStack space={3}>
-                        <Text fontSize="lg" fontWeight="bold" color="gray.800">Overview</Text>
-                        <HStack space={3}>
-                            <StatsCard
-                                title="Sessions"
-                                value={sess.loading ? "…" : String(totalSessions)}
-                                subtitle="total"
-                                icon="📅"
-                                colorScheme="purple"
-                            />
-                            <StatsCard
-                                title="Weight Lost"
-                                value={pr.loading ? "…" : (weightLost != null ? `${weightLost} kg` : "—")}
-                                subtitle="since start"
-                                icon="⚖️"
-                                colorScheme="orange"
-                            />
-                        </HStack>
-                    </VStack>
+                    <ExploreSpotlight />
 
-                    {/* Steps */}
-                    {/*<StepsCard />*/}
+                    <StepsCard />
 
-                    {/* Recent Sessions (last 2 confirmed) */}
                     <VStack space={3}>
-                        <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                            Upcoming (Confirmed)
-                        </Text>
+                        <SectionHeader icon="time-outline" title="Upcoming sessions" />
                         {sess.loading ? (
                             <VStack space={2}>
-                                <Skeleton h="16" rounded="xl" />
-                                <Skeleton h="16" rounded="xl" />
+                                <Skeleton h="18" rounded="2xl" bg="rgba(255,255,255,0.05)" />
+                                <Skeleton h="18" rounded="2xl" bg="rgba(255,255,255,0.05)" />
                             </VStack>
                         ) : confirmedSessions.length ? (
-                            <VStack space={2}>
+                            <VStack space={3}>
                                 {confirmedSessions.map((s: any) => {
                                     const date = new Date(s.scheduledStart);
-                                    const end = new Date(s.scheduledEnd);
+                                        const end = new Date(s.scheduledEnd);
                                     const friendly = isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
                                     return (
-                                        <Card key={s._id} p={4} bg="white" rounded="xl" shadow={1}>
-                                            <HStack alignItems="center" justifyContent="space-between">
-                                                <VStack flex={1}>
-                                                    <Text fontWeight="semibold">
-                                                        {s.type?.replace("_", " ") || "Session"}
-                                                    </Text>
-                                                    <Text fontSize="xs" color="gray.500">
-                                                        {friendly} · {isNaN(end.getTime()) ? "" : `${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
-                                                    </Text>
-                                                    {s.location?.city ? (
-                                                        <Text fontSize="xs" color="gray.400">
-                                                            {s.location.city}{s.location.state ? `, ${s.location.state}` : ""}
-                                                        </Text>
-                                                    ) : null}
-                                                </VStack>
-                                                <Badge colorScheme="info" variant="subtle">
+                                        <VStack
+                                            key={s._id}
+                                            p={4}
+                                            rounded="2xl"
+                                            borderWidth={1}
+                                            borderColor="rgba(255,255,255,0.08)"
+                                            bg="#0F111A"
+                                            space={2}
+                                        >
+                                            <HStack justifyContent="space-between" alignItems="center">
+                                                <Text fontWeight="semibold" color="white">
+                                                    {s.type?.replace("_", " ") || "Session"}
+                                                </Text>
+                                                <Badge colorScheme="info" variant="subtle" rounded="full">
                                                     {s.status}
                                                 </Badge>
                                             </HStack>
-                                        </Card>
+                                            <Text fontSize="xs" color="coolGray.400">
+                                                {friendly} · {isNaN(end.getTime()) ? "" : end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                            </Text>
+                                            {s.location?.city ? (
+                                                <Text fontSize="xs" color="coolGray.500">
+                                                    {s.location.city}
+                                                    {s.location.state ? `, ${s.location.state}` : ""}
+                                                </Text>
+                                            ) : null}
+                                        </VStack>
                                     );
                                 })}
                             </VStack>
                         ) : (
-                            <Card p={4} bg="white" rounded="xl" shadow={1}>
-                                <Text color="gray.500">No confirmed sessions.</Text>
-                            </Card>
+                            <Box p={4} rounded="2xl" borderWidth={1} borderColor="rgba(255,255,255,0.08)" bg="#0F111A">
+                                <Text color="coolGray.400">No confirmed sessions.</Text>
+                            </Box>
                         )}
                     </VStack>
 
-
-                    {/* Quick Actions */}
                     <VStack space={3}>
-                        <Text fontSize="lg" fontWeight="bold" color="gray.800">
-                            Quick Actions
-                        </Text>
-                        <VStack space={3}>
-                            <ActionButton
-                                title="Log Weight"
-                                subtitle="Track your progress"
-                                icon="⚖️"
-                                onPress={() => router.push("/(tabs)/progress")}
-                                colorScheme="info"
-                            />
-                            <ActionButton
-                                title="View Meal Plan"
-                                subtitle="Today's nutrition guide"
-                                icon="🍎"
-                                onPress={() => router.push("/(tabs)/nutrition")}
-                                colorScheme="success"
-                            />
-                            <ActionButton
-                                title="Workout History"
-                                subtitle="See past sessions"
-                                icon="📊"
-                                onPress={() => router.push("/(tabs)/workouts")}
-                                colorScheme="purple"
-                            />
-                        </VStack>
+                        <SectionHeader icon="flash-outline" title="Quick actions" />
+                        <HStack space={4}>
+                            <ActionButton title="Explore trainers" subtitle="Find the right coach" icon="people-outline" onPress={() => router.push("/(trainers)/view-all")} />
+                            <ActionButton title="Log weight" subtitle="Update progress" icon="speedometer-outline" onPress={() => router.push("/(tabs)/progress")} />
+                        </HStack>
+                        <HStack space={4}>
+                            <ActionButton title="Meal plan" subtitle="Today’s nutrition" icon="restaurant-outline" onPress={() => router.push("/(tabs)/nutrition")} />
+                            <ActionButton title="Workout history" subtitle="Review past sessions" icon="barbell-outline" onPress={() => router.push("/(tabs)/workouts")} />
+                        </HStack>
                     </VStack>
-
-                    <Box h={6} />
                 </VStack>
             </ScrollView>
+        </Box>
+    );
+}
+
+function ExploreSpotlight() {
+    return (
+        <Box
+            p={5}
+            rounded="3xl"
+            bg={{
+                linearGradient: {
+                    colors: ["#0F0A24", "#05060A"],
+                    start: [0, 0],
+                    end: [1, 1],
+                },
+            }}
+            borderWidth={1}
+            borderColor="rgba(255,255,255,0.08)"
+            shadow={4}
+        >
+            <HStack justifyContent="space-between" alignItems="center" mb={3}>
+                <VStack flex={1} pr={4}>
+                    <Text color="#C4B5FD" fontSize="xs" letterSpacing={2} textTransform="uppercase">
+                        Explore trainers
+                    </Text>
+                    <Text color="white" fontSize="lg" fontWeight="bold" lineHeight={24}>
+                        Pair with elite coaching talent across strength, conditioning, and nutrition.
+                    </Text>
+                </VStack>
+                <HStack space={-2} alignItems="center">
+                    {["A", "L", "T"].map((letter) => (
+                        <Avatar key={letter} size="sm" bg="rgba(124,58,237,0.3)">
+                            {letter}
+                        </Avatar>
+                    ))}
+                </HStack>
+            </HStack>
+            <VStack space={2} mb={4}>
+                <Text color="coolGray.300" fontSize="xs">
+                    • Filter by specialization, availability, or communication style
+                </Text>
+                <Text color="coolGray.300" fontSize="xs">
+                    • Preview client transformations and trainer response times
+                </Text>
+            </VStack>
+            <Button rounded="xl" bg="#7C3AED" _text={{ fontWeight: "bold" }} onPress={() => router.push("/(trainers)/view-all")}>Discover coaches</Button>
         </Box>
     );
 }
