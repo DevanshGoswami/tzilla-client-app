@@ -153,3 +153,15 @@ export const ADD_PROGRESS = gql`
     }
     ${CLIENT_PROFILE_SUMMARY_FIELDS}
 `;
+
+export const REQUEST_INVITATION = gql`
+  mutation RequestInvitation($trainerId: ID!, $email: String!) {
+    requestInvitation(input: { trainerId: $trainerId, email: $email }) {
+      _id
+      trainerId
+      email
+      status
+      createdAt
+    }
+  }
+`;

@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { ONBOARD_OR_UPDATE } from "@/graphql/mutations";
 import {router, useNavigation} from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { GET_ME } from "@/graphql/queries";
 import {ENV} from "@/lib/env";
 import {getTokens} from "@/lib/apollo";
@@ -32,6 +33,7 @@ type Activity =
     | "VERY_ACTIVE";
 
 const AWS_BASE = `${ENV.API_URL}/api/aws`; // <-- adjust if your router mounts elsewhere
+const SCREEN_BG = "#05060A";
 
 export default function OnboardingScreen() {
     const { data: meData, loading: meLoading } = useQuery(GET_ME);
@@ -560,10 +562,13 @@ export default function OnboardingScreen() {
 
     if (meLoading || tokenLoading) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" />
-                <Text style={styles.loadingText}>Loading your profile…</Text>
-            </View>
+            <Screen withHeader backgroundColor={SCREEN_BG} headerColor={SCREEN_BG}>
+                <StatusBar style="light" backgroundColor={SCREEN_BG} />
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#FFFFFF" />
+                    <Text style={styles.loadingText}>Loading your profile…</Text>
+                </View>
+            </Screen>
         );
     }
 
@@ -573,7 +578,8 @@ export default function OnboardingScreen() {
     const progress = ((stepIndex + 1) / steps.length) * 100;
 
     return (
-        <Screen withHeader>
+        <Screen withHeader backgroundColor={SCREEN_BG} headerColor={SCREEN_BG}>
+            <StatusBar style="light" backgroundColor={SCREEN_BG} />
             <View style={styles.container}>
                 <Text style={styles.headerTitle}>Create your fitness profile</Text>
                 <View style={styles.progressTrack}>
@@ -791,7 +797,7 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         padding: 16,
-        backgroundColor: "#05060A",
+        backgroundColor: SCREEN_BG,
     },
     headerTitle: {
         fontSize: 22,
@@ -1046,7 +1052,7 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        backgroundColor: "#05060A",
+        backgroundColor: SCREEN_BG,
     },
     loadingText: {
         marginTop: 10,

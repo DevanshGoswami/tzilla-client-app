@@ -4,6 +4,12 @@ export interface TrainerWithPlans {
     trainer: {
         _id: string;
         userId: string;
+        user?: {
+            _id: string;
+            name?: string | null;
+            email?: string | null;
+            avatarUrl?: string | null;
+        } | null;
         gender: string;
         contact: {
             city: string;

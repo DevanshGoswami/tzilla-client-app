@@ -38,6 +38,12 @@ export const GET_INVITATIONS_FOR_CLIENT = gql`
             expiresAt
             createdAt
             updatedAt
+            trainer {
+                _id
+                name
+                email
+                avatarUrl
+            }
         }
     }
 `;
@@ -271,6 +277,82 @@ export const GET_TRAINER_CONTACT = gql`
                 country
                 postalCode
             }
+        }
+    }
+`;
+
+export const TRAINERS_WITH_PLANS = gql`
+    query TrainersWithPlans($pageNumber: Int!, $pageSize: Int!) {
+        trainersWithPlans(pagination: { pageNumber: $pageNumber, pageSize: $pageSize }) {
+            trainer {
+                _id
+                userId
+                gender
+                user {
+                    _id
+                    name
+                    email
+                    avatarUrl
+                }
+                contact {
+                    city
+                    country
+                }
+                professional {
+                    profilePhoto
+                    bio
+                    yearsOfExperience
+                    businessType
+                    specialties
+                    languages
+                    gallery
+                }
+                availability {
+                    preferredTime
+                    daysAvailable
+                    checkIn
+                    checkOut
+                    timezone
+                }
+                transformations {
+                    clientName
+                    timeline
+                    transformationGoal
+                    resultsAndAchievements
+                }
+                testimonials {
+                    clientName
+                    profileImage
+                    note
+                }
+            }
+            subscriptionPlans {
+                _id
+                name
+                amount
+                period
+                interval
+                description
+                meta {
+                    freeTrialSessions
+                    sessionsIncludedPerMonth
+                }
+            }
+        }
+    }
+`;
+
+export const ACTIVE_CLIENT_SUBSCRIPTIONS_V2 = gql`
+    query ActiveClientSubscriptionsV2($trainerId: ID!, $clientId: ID!) {
+        activeClientSubscriptionsV2(trainerId: $trainerId, clientId: $clientId) {
+            _id
+            type
+            issuer
+            subscriber
+            planId
+            status
+            startedAt
+            currentPeriodEnd
         }
     }
 `;

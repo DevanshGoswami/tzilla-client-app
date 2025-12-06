@@ -128,6 +128,8 @@ export default function SessionsScreen() {
         fetchMore,
     } = useQuery<TrainersQueryData>(GET_TRAINERS_FOR_CLIENT, {
         variables: { pagination: { pageNumber, pageSize } },
+        fetchPolicy: "no-cache",
+        nextFetchPolicy: "no-cache",
         notifyOnNetworkStatusChange: true,
     });
 

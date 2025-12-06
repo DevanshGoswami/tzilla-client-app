@@ -1,21 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-    Box,
-    VStack,
-    HStack,
-    Text,
-    ScrollView,
-    Avatar,
-    Badge,
-    Button,
-    Skeleton,
-    Pressable,
-    Card,
-    IconButton,
-    ArrowBackIcon,
-} from "native-base";
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import { Avatar, Badge, Button } from "native-base";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@apollo/client/react";
 import { router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { TRAINERS_WITH_PLANS } from "@/graphql/queries";
 import { useSelectedTrainerStore, TrainerWithPlans } from "@/store/selectedTrainerStore";
@@ -23,6 +13,12 @@ import { getTokens, onTokensChanged } from "@/lib/apollo";
 import { resolveS3KeyToUrl, isFullUrl } from "@/lib/media";
 
 const PAGE_SIZE = 20;
+const BG = "#05030D";
+const CARD_BG = "rgba(15,13,25,0.92)";
+const BORDER = "rgba(255,255,255,0.08)";
+const TEXT_PRIMARY = "#F6F4FF";
+const TEXT_MUTED = "rgba(247,244,255,0.75)";
+const ACCENT = "#A855F7";
 
 export default function ViewAllTrainers() {
     const [pageNumber, setPageNumber] = useState(1);
@@ -32,7 +28,9 @@ export default function ViewAllTrainers() {
 
     const { data, loading, error, fetchMore, refetch } = useQuery(TRAINERS_WITH_PLANS, {
         variables: { pageNumber: 1, pageSize: PAGE_SIZE },
-        fetchPolicy: "cache-and-network",
+        fetchPolicy: "no-cache",
+        nextFetchPolicy: "no-cache",
+        notifyOnNetworkStatusChange: true,
     });
 
     const trainers: TrainerWithPlans[] = data?.trainersWithPlans ?? [];
@@ -118,145 +116,253 @@ export default function ViewAllTrainers() {
         return photoMap[value];
     };
 
+    const isInitialLoading = loading && !data;
+
+    if (error) {
+        return (
+            <SafeAreaView style={styles.safeArea}>
+                <View style={[styles.center, { paddingHorizontal: 32 }]}>
+                    <Text style={styles.errorText}>Unable to load trainers right now.</Text>
+                    <Button mt={4} onPress={() => refetch()}>
+                        Retry
+                    </Button>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+    if (isInitialLoading) {
+        return (
+            <SafeAreaView style={styles.safeArea}>
+                <View style={styles.center}>
+                    <ActivityIndicator color="#fff" />
+                    <Text style={[styles.errorText, { marginTop: 12 }]}>Finding trainers…</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     return (
-        <Box flex={1} bg="gray.50" safeAreaTop>
-            <VStack flex={1}>
-                {/* Header */}
-                <HStack px={4} py={3} alignItems="center" justifyContent="space-between">
-                    <HStack space={2} alignItems="center">
-                        <IconButton
-                            variant="ghost"
-                            borderRadius="full"
-                            onPress={() => router.back()}
-                            icon={<ArrowBackIcon color="gray.800" />}
-                            accessibilityLabel="Go back"
-                        />
-                        <Text fontSize="xl" fontWeight="bold" color="gray.800">
-                            Explore Trainers
+        <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+            <View style={styles.container}>
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.scrollContent}
+                >
+                    <LinearGradient
+                        colors={["#1C0F2E", "#07040F"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.hero}
+                    >
+                        <TouchableOpacity style={styles.heroBack} onPress={() => router.back()}>
+                            <Ionicons name="chevron-back" size={18} color="#fff" />
+                        </TouchableOpacity>
+                        <Text style={styles.heroEyebrow}>Trainer marketplace</Text>
+                        <Text style={styles.heroTitle}>Choose the coach for your next sprint</Text>
+                        <Text style={styles.heroSubtitle}>
+                            Browse top-tier pros, preview specialties, and send invitations in seconds.
                         </Text>
-                    </HStack>
-                    {/* You can add a filter button later */}
-                </HStack>
+                    </LinearGradient>
 
-                {loading && !data ? (
-                    <VStack space={3} px={4}>
-                        {[...Array(5)].map((_, i) => (
-                            <Skeleton key={i} h="20" rounded="xl" />
-                        ))}
-                    </VStack>
-                ) : error ? (
-                    <VStack flex={1} justifyContent="center" alignItems="center" px={4}>
-                        <Text color="red.500" textAlign="center">
-                            Unable to load trainers.
-                        </Text>
-                        <Button mt={4} onPress={() => refetch()}>
-                            Retry
-                        </Button>
-                    </VStack>
-                ) : (
-                    <ScrollView flex={1} px={4}>
-                        <VStack space={3} mb={4}>
-                            {trainers.map((twp) => {
-                                const t = twp.trainer;
-                                const p = t.professional;
-                                const primarySpec = p.specialties?.[0];
-                                const specialtyText = specialtiesToText(p.specialties ?? []);
-                                const avatarUri = getAvatarUri(p.profilePhoto);
-                                const cityCountry = [t.contact?.city, t.contact?.country]
-                                    .filter(Boolean)
-                                    .join(", ");
+                    <View style={styles.list}>
+                        {trainers.map((twp) => {
+                            const t = twp.trainer;
+                            const p = t.professional;
+                            const displayName = t.user?.name || humanBusinessType(p.businessType);
+                            const specialtyText = specialtiesToText(p.specialties ?? []);
+                            const avatarUri = t.user?.avatarUrl || getAvatarUri(p.profilePhoto);
+                            const cityCountry = [t.contact?.city, t.contact?.country].filter(Boolean).join(", ");
 
-                                return (
-                                    <Pressable
-                                        key={t._id}
-                                        onPress={() => {
-                                            setSelected(twp);
-                                            // router param uses trainer.userId as trainerId
-                                            router.push({
-                                                pathname: "/(trainers)/profile/[trainerId]",
-                                                params: { trainerId: t.userId },
-                                            });
-                                        }}
-                                    >
-                                        <Card p={4} bg="white" shadow={1} rounded="xl">
-                                            <HStack space={3}>
-                                                <Avatar
-                                                    size="lg"
-                                                    source={avatarUri ? { uri: avatarUri } : undefined}
-                                                    bg="primary.500"
-                                                >
-                                                    {primarySpec ? primarySpec[0] : "T"}
-                                                </Avatar>
-
-                                                <VStack flex={1} space={1}>
-                                                    <HStack justifyContent="space-between">
-                                                        <VStack flex={1}>
-                                                            <Text
-                                                                fontWeight="semibold"
-                                                                fontSize="md"
-                                                                color="gray.800"
-                                                            >
-                                                                {humanBusinessType(p.businessType)}
-                                                            </Text>
-                                                            {cityCountry ? (
-                                                                <Text
-                                                                    fontSize="xs"
-                                                                    color="gray.500"
-                                                                >
-                                                                    {cityCountry}
-                                                                </Text>
-                                                            ) : null}
-                                                        </VStack>
-                                                        <Badge
-                                                            colorScheme="purple"
-                                                            variant="subtle"
-                                                            alignSelf="flex-start"
-                                                        >
-                                                            {p.yearsOfExperience} yrs
-                                                        </Badge>
-                                                    </HStack>
-
-                                                    {specialtyText ? (
-                                                        <Text
-                                                            fontSize="xs"
-                                                            color="gray.600"
-                                                            numberOfLines={1}
-                                                        >
-                                                            {specialtyText}
-                                                        </Text>
-                                                    ) : null}
-
-                                                    {t.availability?.preferredTime ? (
-                                                        <Text fontSize="xs" color="gray.400">
-                                                            Prefers{" "}
-                                                            {t.availability.preferredTime
-                                                                .toLowerCase()
-                                                                .replace(/_/g, " ")}{" "}
-                                                            • {t.availability.timezone}
-                                                        </Text>
-                                                    ) : null}
-                                                </VStack>
-                                            </HStack>
-                                        </Card>
-                                    </Pressable>
-                                );
-                            })}
-
-                            {trainers.length >= PAGE_SIZE && (
-                                <Button
-                                    mt={2}
-                                    mb={8}
-                                    variant="outline"
-                                    isLoading={loading}
-                                    onPress={handleLoadMore}
+                            return (
+                                <TouchableOpacity
+                                    key={t._id}
+                                    activeOpacity={0.9}
+                                    onPress={() => {
+                                        setSelected(twp);
+                                        router.push({
+                                            pathname: "/(trainers)/profile/[trainerId]",
+                                            params: { trainerId: t.userId },
+                                        });
+                                    }}
                                 >
-                                    Load more
-                                </Button>
+                                    <LinearGradient
+                                        colors={["rgba(124,58,237,0.15)", "rgba(8,6,20,0.9)"]}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={styles.card}
+                                    >
+                                        <Avatar
+                                            size="md"
+                                            source={avatarUri ? { uri: avatarUri } : undefined}
+                                            bg="rgba(255,255,255,0.08)"
+                                        >
+                                            {displayName.charAt(0).toUpperCase()}
+                                        </Avatar>
+                                        <View style={{ flex: 1, marginHorizontal: 14 }}>
+                                            <Text style={styles.cardName}>{displayName}</Text>
+                                            {cityCountry ? <Text style={styles.cardLocation}>{cityCountry}</Text> : null}
+                                            {specialtyText ? (
+                                                <Text style={styles.cardSpecialties}>{specialtyText}</Text>
+                                            ) : null}
+                                            {t.availability?.preferredTime ? (
+                                                <Text style={styles.cardMeta}>
+                                                    Prefers {t.availability.preferredTime.toLowerCase().replace(/_/g, " ")} •{" "}
+                                                    {t.availability.timezone}
+                                                </Text>
+                                            ) : null}
+                                        </View>
+                                        <View style={styles.experienceChip}>
+                                            <Text style={styles.experienceText}>{p.yearsOfExperience} yrs</Text>
+                                        </View>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+
+                    {trainers.length >= PAGE_SIZE && (
+                        <TouchableOpacity style={styles.loadButton} onPress={handleLoadMore} disabled={loading}>
+                            {loading ? (
+                                <ActivityIndicator color="#05030D" />
+                            ) : (
+                                <Text style={styles.loadButtonText}>Load more profiles</Text>
                             )}
-                        </VStack>
-                    </ScrollView>
-                )}
-            </VStack>
-        </Box>
+                        </TouchableOpacity>
+                    )}
+                </ScrollView>
+            </View>
+        </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    safeArea: {
+        flex: 1,
+        backgroundColor: BG,
+    },
+    container: {
+        flex: 1,
+        backgroundColor: BG,
+    },
+    scrollContent: {
+        paddingBottom: 60,
+        paddingHorizontal: 16,
+    },
+    hero: {
+        borderRadius: 28,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: BORDER,
+        marginBottom: 20,
+    },
+    heroBack: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: BORDER,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    heroEyebrow: {
+        color: TEXT_MUTED,
+        textTransform: "uppercase",
+        fontSize: 11,
+        letterSpacing: 1,
+        marginTop: 16,
+    },
+    heroTitle: {
+        color: TEXT_PRIMARY,
+        fontSize: 24,
+        fontWeight: "700",
+        marginTop: 8,
+    },
+    heroSubtitle: {
+        color: TEXT_MUTED,
+        fontSize: 13,
+        marginTop: 8,
+        lineHeight: 20,
+    },
+    heroStats: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginTop: 18,
+    },
+    heroStatValue: {
+        color: TEXT_PRIMARY,
+        fontSize: 20,
+        fontWeight: "700",
+    },
+    heroStatLabel: {
+        color: TEXT_MUTED,
+        fontSize: 11,
+        marginTop: 4,
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+    },
+    list: {
+        gap: 14,
+    },
+    card: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 16,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: BORDER,
+    },
+    cardName: {
+        color: TEXT_PRIMARY,
+        fontSize: 16,
+        fontWeight: "700",
+    },
+    cardLocation: {
+        color: TEXT_MUTED,
+        fontSize: 12,
+        marginTop: 2,
+    },
+    cardSpecialties: {
+        color: TEXT_MUTED,
+        fontSize: 12,
+        marginTop: 6,
+    },
+    cardMeta: {
+        color: "rgba(255,255,255,0.5)",
+        fontSize: 11,
+        marginTop: 4,
+    },
+    experienceChip: {
+        borderRadius: 14,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        backgroundColor: "rgba(0,0,0,0.25)",
+        borderWidth: 1,
+        borderColor: BORDER,
+    },
+    experienceText: {
+        color: TEXT_PRIMARY,
+        fontSize: 11,
+        fontWeight: "700",
+    },
+    loadButton: {
+        marginTop: 20,
+        backgroundColor: ACCENT,
+        borderRadius: 18,
+        alignItems: "center",
+        paddingVertical: 12,
+    },
+    loadButtonText: {
+        color: "#05030D",
+        fontWeight: "800",
+    },
+    center: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    errorText: {
+        color: TEXT_MUTED,
+        textAlign: "center",
+    },
+});

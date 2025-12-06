@@ -12,6 +12,7 @@ import {
   Button,
   useToast,
   Icon,
+  Avatar,
 } from "native-base";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -30,6 +31,11 @@ type Invitation = {
   expiresAt: string;
   createdAt: string;
   updatedAt: string;
+  trainer?: {
+    name?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+  } | null;
 };
 
 export default function InvitationsScreen() {
@@ -232,29 +238,26 @@ function InvitationCard({
 
   const status = isExpired ? statusConfig.EXPIRED : statusConfig[invitation.status];
 
+  const trainerName = invitation.trainer?.name || "Trainer";
+  const trainerEmail = invitation.trainer?.email || invitation.email;
+  const trainerAvatar = invitation.trainer?.avatarUrl;
+
   return (
     <VStack p={4} rounded="2xl" borderWidth={1} borderColor="rgba(255,255,255,0.08)" bg="#0F111A" space={3}>
       <HStack justifyContent="space-between" alignItems="flex-start" space={3}>
-        <Box
-          w={10}
-          h={10}
-          rounded="full"
-          bg="rgba(124,58,237,0.15)"
-          alignItems="center"
-          justifyContent="center"
+        <Avatar
+          size="sm"
+          bg="rgba(124,58,237,0.2)"
+          source={trainerAvatar ? { uri: trainerAvatar } : undefined}
         >
-          <Ionicons
-            name={invitation.type === "TRAINER_INVITE" ? "person-add-outline" : "paper-plane-outline"}
-            size={18}
-            color="#C4B5FD"
-          />
-        </Box>
+          {trainerName.charAt(0).toUpperCase()}
+        </Avatar>
         <VStack flex={1} space={1}>
           <Text fontWeight="bold" color="white">
-            {invitation.type === "TRAINER_INVITE" ? "Trainer invitation" : "Your request"}
+            {trainerName}
           </Text>
           <Text fontSize="xs" color="coolGray.400">
-            From: {invitation.email}
+            {trainerEmail}
           </Text>
           <Text fontSize="xs" color="coolGray.500">
             Sent {new Date(invitation.createdAt).toLocaleDateString()}

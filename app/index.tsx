@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Redirect } from "expo-router";
+import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 
 
@@ -18,6 +18,11 @@ export default function Index() {
         })();
     }, []);
 
-    if (!ready) return null;
-    return authed ? <Redirect href="/(tabs)/home" /> : <Redirect href="/(auth)/login" />;
+    useEffect(() => {
+        if (!ready) return;
+        const target = authed ? "/(tabs)/home" : "/(auth)/login";
+        router.replace(target);
+    }, [ready, authed]);
+
+    return null;
 }
