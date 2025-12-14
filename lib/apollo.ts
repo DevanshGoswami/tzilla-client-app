@@ -1,4 +1,4 @@
-import { ENV } from "@/lib/env";
+import { getRuntimeConfigValue } from "@/lib/remoteConfig";
 import {
   ApolloClient,
   ApolloLink,
@@ -148,7 +148,7 @@ export async function refreshAccessToken(): Promise<string | null> {
 
     // Make a direct HTTP request to refresh the token
     // We can't use the Apollo client here to avoid circular dependencies
-    const response = await fetch(ENV.API_URL + "/graphql", {
+    const response = await fetch(getRuntimeConfigValue("apiUrl") + "/graphql", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -193,7 +193,7 @@ export async function refreshAccessToken(): Promise<string | null> {
 
 // Create the HTTP link
 const httpLink = createHttpLink({
-  uri: ENV.API_URL + "/graphql",
+  uri: () => getRuntimeConfigValue("apiUrl") + "/graphql",
 });
 
 // Auth link with token refresh logic

@@ -13,7 +13,7 @@ import { useQuery } from "@apollo/client/react";
 import { GET_ME } from "@/graphql/queries";
 import Screen from "@/components/ui/Screen";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {ENV} from "@/lib/env";
+import { useRuntimeConfig } from "@/lib/remoteConfig";
 
 type ChatMessage = {
     _id: string;
@@ -416,10 +416,11 @@ export default function ChatRoom() {
     const [previewImage, setPreviewImage] = useState<{ uri: string; width: number; height: number } | null>(null);
     const viewerAspect = previewImage?.height ? previewImage.width / previewImage.height : 1;
 
-    const AWS_BASE = `${ENV.API_URL}/api/aws`; // 🔹 same base as your example page
+    const runtimeConfig = useRuntimeConfig();
+    const awsBase = useMemo(() => `${runtimeConfig.apiUrl}/api/aws`, [runtimeConfig.apiUrl]);
 
     async function getPreviewUrlForKey(key: string, accessToken: string): Promise<string> {
-        const res = await fetch(`${AWS_BASE}/media/${encodeURIComponent(key)}`, {
+        const res = await fetch(`${awsBase}/media/${encodeURIComponent(key)}`, {
             method: "GET",
             headers: { Authorization: `Bearer ${accessToken}`, role: "client" },
         });
@@ -446,7 +447,7 @@ export default function ChatRoom() {
                 return "";
             }
         },
-        [token]
+        [token, awsBase]
     );
 
 

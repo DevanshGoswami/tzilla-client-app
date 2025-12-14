@@ -2,7 +2,7 @@
 import Screen from "@/components/ui/Screen";
 import { GET_ME } from "@/graphql/queries";
 import { getTokens } from "@/lib/apollo";
-import { ENV } from "@/lib/env";
+import { useRuntimeConfig } from "@/lib/remoteConfig";
 import { gql } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { FontAwesome5, Ionicons } from "@expo/vector-icons";
@@ -190,8 +190,9 @@ const toInt = (n: any, min = 0, max = 100) => {
 };
 
 async function resolveS3KeyToUrl(
-  key?: string | null,
-  token?: string | null
+  key: string | undefined | null,
+  token: string | undefined | null,
+  apiBase: string
 ): Promise<string | undefined> {
   if (!key) return undefined;
   if (key.startsWith("http")) return key;
@@ -199,7 +200,7 @@ async function resolveS3KeyToUrl(
   if (!token) return undefined;
   try {
     const resp = await fetch(
-      `${ENV.API_URL}/api/aws/media/${encodeURIComponent(key)}`,
+      `${apiBase}/api/aws/media/${encodeURIComponent(key)}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}`, role: "client" },
@@ -387,6 +388,26 @@ const MacroPill = ({ label, value }: { label: string; value: string }) => (
   </VStack>
 );
 
+function PortionTag({ grams }: { grams: number }) {
+  return (
+    <HStack
+      alignItems="center"
+      px={3}
+      py={1}
+      borderRadius={999}
+      borderWidth={1}
+      borderColor={BORDER_COLOR}
+      bg="rgba(124,58,237,0.15)"
+      space={1.5}
+    >
+      <Ionicons name="scale-outline" size={14} color="#C4B5FD" />
+      <Text fontSize="xs" fontWeight="600" color="white">
+        Portion {grams}g
+      </Text>
+    </HStack>
+  );
+}
+
 const CalorieStat = ({
   label,
   value,
@@ -433,7 +454,14 @@ type UIMeal = {
   avatarKey?: string;
   avatarUrl?: string;
   recipeUrl?: string;
-  macros?: { protein?: number; carbs?: number; fat?: number } | null;
+  macros?:
+    | {
+        protein?: number;
+        carbs?: number;
+        fat?: number;
+        portionSizeG?: number;
+      }
+    | null;
 };
 type DietLog = {
   id: string;
@@ -1045,20 +1073,30 @@ function MealCard({
           {meal.macros ? (
             <>
               <Divider my={1} bg={BORDER_COLOR} />
-              <HStack space={3} flexWrap="wrap">
-                {typeof meal.macros.protein === "number" && (
-                  <MacroPill
-                    label="Protein"
-                    value={`${meal.macros.protein}g`}
-                  />
-                )}
-                {typeof meal.macros.carbs === "number" && (
-                  <MacroPill label="Carbs" value={`${meal.macros.carbs}g`} />
-                )}
-                {typeof meal.macros.fat === "number" && (
-                  <MacroPill label="Fat" value={`${meal.macros.fat}g`} />
-                )}
-              </HStack>
+              <VStack space={3}>
+                <HStack justifyContent="space-between" alignItems="center">
+                  <Text fontSize="xs" color="coolGray.400">
+                    Macro split
+                  </Text>
+                  {typeof meal.macros.portionSizeG === "number" ? (
+                    <PortionTag grams={meal.macros.portionSizeG} />
+                  ) : null}
+                </HStack>
+                <HStack space={3} flexWrap="wrap">
+                  {typeof meal.macros.protein === "number" && (
+                    <MacroPill
+                      label="Protein"
+                      value={`${meal.macros.protein}g`}
+                    />
+                  )}
+                  {typeof meal.macros.carbs === "number" && (
+                    <MacroPill label="Carbs" value={`${meal.macros.carbs}g`} />
+                  )}
+                  {typeof meal.macros.fat === "number" && (
+                    <MacroPill label="Fat" value={`${meal.macros.fat}g`} />
+                  )}
+                </HStack>
+              </VStack>
             </>
           ) : null}
 
@@ -1107,6 +1145,7 @@ function MealCard({
    ────────────────────────────────────────────────────────────────────────── */
 
 export default function NutritionScreen() {
+  const runtimeConfig = useRuntimeConfig();
   const toast = useToast();
 
   const { data: meData } = useQuery(GET_ME);
@@ -1273,6 +1312,7 @@ export default function NutritionScreen() {
                 protein: m.macros.protein ?? undefined,
                 carbs: m.macros.carbs ?? undefined,
                 fat: m.macros.fat ?? undefined,
+                portionSizeG: m.macros.portionSizeG ?? undefined,
               }
             : undefined,
         });
@@ -1290,7 +1330,11 @@ export default function NutritionScreen() {
       const withUrls = await Promise.all(
         plannedMeals.map(async (m) => ({
           ...m,
-          avatarUrl: await resolveS3KeyToUrl(m.avatarKey, token),
+          avatarUrl: await resolveS3KeyToUrl(
+            m.avatarKey,
+            token,
+            runtimeConfig.apiUrl
+          ),
         }))
       );
       if (!cancelled) setResolvedMeals(withUrls);
@@ -1298,7 +1342,7 @@ export default function NutritionScreen() {
     return () => {
       cancelled = true;
     };
-  }, [plannedMeals, token, tokenLoading]);
+  }, [plannedMeals, token, tokenLoading, runtimeConfig.apiUrl]);
 
   // logs
   const dietLogs: DietLog[] = logsData?.dietLogsByDate ?? [];

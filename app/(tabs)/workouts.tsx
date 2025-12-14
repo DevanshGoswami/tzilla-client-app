@@ -26,7 +26,7 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { GET_ME } from "@/graphql/queries";
 import { getTokens } from "@/lib/apollo";
-import { ENV } from "@/lib/env";
+import { getRuntimeConfigValue } from "@/lib/remoteConfig";
 import { Image as ExpoImage } from "expo-image"; // ✅ cached images
 import { Ionicons } from "@expo/vector-icons";
 
@@ -146,7 +146,7 @@ async function resolveS3KeyToUrl(
   if (!token) return undefined;
   try {
     const resp = await fetch(
-      `${ENV.API_URL}/api/aws/media/${encodeURIComponent(key)}`,
+      `${getRuntimeConfigValue("apiUrl")}/api/aws/media/${encodeURIComponent(key)}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}`, role: "client" },

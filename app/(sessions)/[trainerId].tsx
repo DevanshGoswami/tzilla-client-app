@@ -42,7 +42,7 @@ import {
     CANCEL_SUBSCRIPTION,
 } from "@/graphql/mutations";
 import RazorpayCheckout from "react-native-razorpay";
-import { ENV } from "@/lib/env";
+import { getRuntimeConfigValue } from "@/lib/remoteConfig";
 import Screen from "@/components/ui/Screen";
 
 const SLOT_DURATION_MIN = 60;
@@ -464,7 +464,7 @@ export default function TrainerDetail() {
                 Alert.alert("Error", "Unable to create subscription.");
                 return;
             }
-            const key = ENV.RZP_CLIENT_ID;
+            const key = getRuntimeConfigValue("razorpayKeyId");
             if (!key) {
                 Alert.alert("Missing key", "EXPO_PUBLIC_RAZORPAY_KEY_ID not set.");
                 return;

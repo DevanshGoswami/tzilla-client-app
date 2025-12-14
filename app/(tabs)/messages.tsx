@@ -1,6 +1,6 @@
 import { GET_ME, GET_TRAINERS_FOR_CLIENT } from "@/graphql/queries";
 import { getTokens } from "@/lib/apollo";
-import { ENV } from "@/lib/env";
+import { useRuntimeConfig } from "@/lib/remoteConfig";
 import { useSocket } from "@/providers/SocketProvider";
 import { useQuery } from "@apollo/client/react";
 import { Ionicons } from "@expo/vector-icons";
@@ -296,6 +296,7 @@ function TrainerCard({
    Main
 ================================ */
 export default function ChatList() {
+  const runtimeConfig = useRuntimeConfig();
   // tokens
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoading, setTokenLoading] = useState(true);
@@ -375,12 +376,12 @@ export default function ChatList() {
 
   const fetchRooms = useCallback(async () => {
     if (!token) return [];
-    const res = await fetch(`${ENV.API_URL}/api/chat/chats`, {
+    const res = await fetch(`${runtimeConfig.apiUrl}/api/chat/chats`, {
       headers: { Authorization: `Bearer ${token}`, role: "client" },
     });
     if (!res.ok) throw new Error(`Rooms fetch failed: ${res.status}`);
     return (await res.json()) || [];
-  }, [token]);
+  }, [token, runtimeConfig.apiUrl]);
 
   const refreshRooms = useCallback(async () => {
     if (!token) return;

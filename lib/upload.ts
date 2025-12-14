@@ -1,5 +1,7 @@
 // lib/upload.ts
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || "http://localhost:4000";
+import { getRuntimeConfigValue } from "@/lib/remoteConfig";
+
+const apiBase = () => getRuntimeConfigValue("apiUrl");
 
 type PresignOut = {
     uploadUrl: string;   // signed PUT url
@@ -23,7 +25,7 @@ export async function presignImage(
     // First try the newer POST route
     const tryPost = async (): Promise<PresignOut | null> => {
         try {
-            const res = await fetch(`${API_BASE}/aws/presign`, {
+            const res = await fetch(`${apiBase()}/aws/presign`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -48,7 +50,7 @@ export async function presignImage(
 
     // Fallback to legacy GET route
     const tryGet = async (): Promise<PresignOut> => {
-        const u = `${API_BASE}/api/aws/presign?type=${encodeURIComponent(contentType)}`;
+        const u = `${apiBase()}/api/aws/presign?type=${encodeURIComponent(contentType)}`;
         const res = await fetch(u, {
             method: "GET",
             headers: {

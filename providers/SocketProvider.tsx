@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { io, Socket } from "socket.io-client";
 import { getTokens, isTokenExpired, refreshAccessToken } from "@/lib/apollo";
+import { useRuntimeConfig } from "@/lib/remoteConfig";
 
 // ---- Context shape ----
 type SocketContextType = {
@@ -33,6 +34,8 @@ export function SocketProvider({
     children: React.ReactNode;
     token?: string | null;
 }) {
+    const runtimeConfig = useRuntimeConfig();
+    const socketBaseUrl = (runtimeConfig.socketUrl || runtimeConfig.apiUrl || "").trim();
     const [socket, setSocket] = useState<Socket | null>(null);
     const [connected, setConnected] = useState(false);
     const [presence, setPresence] = useState<Record<string, boolean>>({});
@@ -76,7 +79,13 @@ export function SocketProvider({
             const fresh = await ensureFreshToken();
             if (cancelled || !fresh) return;
 
-            const s = io(process.env.EXPO_PUBLIC_SOCKET_URL || "http://localhost:4000", {
+            if (!socketBaseUrl) {
+                setSocket(null);
+                setConnected(false);
+                return;
+            }
+
+            const s = io(socketBaseUrl, {
                 transports: ["websocket"],
                 autoConnect: false,
             });
@@ -144,7 +153,7 @@ export function SocketProvider({
         return () => {
             cancelled = true;
         };
-    }, [token, ensureFreshToken, setSocketAuthToken]);
+    }, [token, ensureFreshToken, setSocketAuthToken, socketBaseUrl]);
 
     // --- Emit wrapper ---
     const emit = useMemo(

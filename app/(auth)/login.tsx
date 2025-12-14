@@ -25,7 +25,7 @@ import { Platform } from "react-native";
 import Svg, { ClipPath, Defs, G, Path, Rect } from "react-native-svg";
 import { GOOGLE_AUTH_SIGN_IN } from "../../graphql/mutations";
 import { saveTokens } from "../../lib/apollo";
-import { ENV } from "../../lib/env";
+import { useRuntimeConfig } from "@/lib/remoteConfig";
 
 function GoogleGIcon({ size = 20 }: { size?: number }) {
   // Official multicolor "G" in SVG (no network needed, renders instantly)
@@ -59,6 +59,7 @@ function GoogleGIcon({ size = 20 }: { size?: number }) {
 }
 
 export default function Login() {
+  const runtimeConfig = useRuntimeConfig();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [googleAuthSignIn, { loading }] = useMutation(GOOGLE_AUTH_SIGN_IN);
   const [showTerms, setShowTerms] = useState(false);
@@ -66,12 +67,12 @@ export default function Login() {
 
   useEffect(() => {
     GoogleSignin.configure({
-      webClientId: ENV.GOOGLE_WEB_CLIENT_ID,
-      iosClientId: ENV.GOOGLE_IOS_CLIENT_ID,
+      webClientId: runtimeConfig.googleWebClientId,
+      iosClientId: runtimeConfig.googleIosClientId,
       offlineAccess: true,
       forceCodeForRefreshToken: true,
     });
-  }, []);
+  }, [runtimeConfig.googleWebClientId, runtimeConfig.googleIosClientId]);
 
   const signInWithGoogle = async () => {
     try {

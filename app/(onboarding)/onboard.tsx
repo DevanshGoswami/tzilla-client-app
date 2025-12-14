@@ -20,8 +20,8 @@ import { ONBOARD_OR_UPDATE } from "@/graphql/mutations";
 import {router, useNavigation} from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GET_ME } from "@/graphql/queries";
-import {ENV} from "@/lib/env";
 import {getTokens} from "@/lib/apollo";
+import { useRuntimeConfig } from "@/lib/remoteConfig";
 
 type Gender = "MALE" | "FEMALE" | "OTHER";
 type Goal = "LOSE_FAT" | "GAIN_MUSCLE" | "MAINTAIN";
@@ -32,10 +32,11 @@ type Activity =
     | "ACTIVE"
     | "VERY_ACTIVE";
 
-const AWS_BASE = `${ENV.API_URL}/api/aws`; // <-- adjust if your router mounts elsewhere
 const SCREEN_BG = "#05060A";
 
 export default function OnboardingScreen() {
+    const runtimeConfig = useRuntimeConfig();
+    const awsBase = useMemo(() => `${runtimeConfig.apiUrl}/api/aws`, [runtimeConfig.apiUrl]);
     const { data: meData, loading: meLoading } = useQuery(GET_ME);
 
     const nav = useNavigation();
@@ -436,7 +437,7 @@ export default function OnboardingScreen() {
 
                 // 1) presign
                 const presignRes = await fetch(
-                    `${AWS_BASE}/presign?type=${encodeURIComponent(contentType)}`,
+                    `${awsBase}/presign?type=${encodeURIComponent(contentType)}`,
                     {
                         method: "GET",
                         headers: {
@@ -452,7 +453,7 @@ export default function OnboardingScreen() {
                             const { accessToken: retryToken } = await getTokens();
                             if (retryToken) {
                                 const retryRes = await fetch(
-                                    `${AWS_BASE}/presign?type=${encodeURIComponent(contentType)}`,
+                                    `${awsBase}/presign?type=${encodeURIComponent(contentType)}`,
                                     {
                                         method: "GET",
                                         headers: { role: "client", Authorization: `Bearer ${retryToken}` },
@@ -485,7 +486,7 @@ export default function OnboardingScreen() {
                 if (!putResp.ok) throw new Error(`Upload failed: ${await putResp.text()}`);
 
                 // 4) get a view URL
-                const viewRes = await fetch(`${AWS_BASE}/media/${encodeURIComponent(key)}`, {
+                const viewRes = await fetch(`${awsBase}/media/${encodeURIComponent(key)}`, {
                     method: "GET",
                     headers: {
                         role: "client",

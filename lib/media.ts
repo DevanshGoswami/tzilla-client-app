@@ -1,4 +1,4 @@
-import { ENV } from "@/lib/env";
+import { getRuntimeConfigValue } from "@/lib/remoteConfig";
 
 const absoluteUrl = /^https?:\/\//i;
 const s3UrlCache = new Map<string, string>();
@@ -23,7 +23,7 @@ export async function resolveS3KeyToUrl(
   if (!token) return undefined;
 
   try {
-    const resp = await fetch(`${ENV.API_URL}/api/aws/media/${encodeURIComponent(key)}`, {
+    const resp = await fetch(`${getRuntimeConfigValue("apiUrl")}/api/aws/media/${encodeURIComponent(key)}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,

@@ -45,8 +45,11 @@ export default function TabsLayout() {
         ({ color, focused }: { color: string; focused: boolean }) => (
             <View
                 style={{
-                    padding: 8,
-                    borderRadius: 16,
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: "center",
+                    justifyContent: "center",
                     backgroundColor: focused ? "rgba(124,58,237,0.25)" : "transparent",
                 }}
             >
