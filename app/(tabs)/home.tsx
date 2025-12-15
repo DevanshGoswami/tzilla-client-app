@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import {
     Box,
     VStack,
@@ -12,12 +12,13 @@ import {
     Pressable,
     Divider,
 } from "native-base";
-import { useQuery } from "@apollo/client/react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { gql } from "@apollo/client";
 import { GET_ME } from "@/graphql/queries";
 import { router } from "expo-router";
 import { useSteps } from "@/hooks/useSteps";
 import { Ionicons } from "@expo/vector-icons";
+import { RefreshControl } from "react-native";
 
 const SESSIONS_FOR_CLIENT = gql`
     query SessionsForClient($clientId: ID!, $pageNumber: Int!, $pageSize: Int!) {
@@ -162,6 +163,11 @@ function SevenDayBars({ data }: { data: { date: string; value: number }[] }) {
 function StepsCard() {
     const { today, last7, weeklyTotal, loading, error, available } = useSteps();
     const unavailable = available === false;
+    const GOAL_STEPS = 10_000;
+    const todaySteps = today ?? 0;
+    const goalProgress = Math.min(1, todaySteps / GOAL_STEPS);
+    const goalReached = goalProgress >= 1;
+    const remaining = Math.max(0, GOAL_STEPS - todaySteps);
 
     return (
         <VStack p={4} rounded="2xl" borderWidth={1} borderColor="rgba(255,255,255,0.08)" bg="#0F111A" space={3}>
@@ -178,6 +184,26 @@ function StepsCard() {
                     </Text>
                 </HStack>
             )}
+            {!loading && !error && !unavailable ? (
+                <VStack space={2} mt={1}>
+                    <HStack justifyContent="space-between" alignItems="center">
+                        <Text fontSize="xs" color="coolGray.400">
+                            Goal: {GOAL_STEPS.toLocaleString()} steps
+                        </Text>
+                        <Text fontSize="xs" color={goalReached ? "emerald.300" : "coolGray.300"}>
+                            {goalReached ? "Goal crushed!" : `${remaining.toLocaleString()} left`}
+                        </Text>
+                    </HStack>
+                    <Box h={2} rounded="full" bg="rgba(255,255,255,0.08)" overflow="hidden">
+                        <Box
+                            h="100%"
+                            w={`${Math.max(4, goalProgress * 100).toFixed(0)}%`}
+                            bg={goalReached ? "emerald.400" : "info.500"}
+                            rounded="full"
+                        />
+                    </Box>
+                </VStack>
+            ) : null}
             {error ? (
                 <Text fontSize="xs" color="red.400">
                     {error}
@@ -192,7 +218,7 @@ function StepsCard() {
                     <SevenDayBars data={last7} />
                     <HStack justifyContent="space-between">
                         <Text fontSize="xs" color="coolGray.400">
-                            7-day total: {" "}
+                            7-day total:{" "}
                             <Text fontWeight="semibold" color="white">
                                 {weeklyTotal.toLocaleString()}
                             </Text>
@@ -208,21 +234,36 @@ function StepsCard() {
 }
 
 export default function Home() {
-    const { data, loading, error, refetch } = useQuery(GET_ME);
+    const { data, loading, error, refetch } = useCachedQuery(GET_ME);
     // @ts-ignore
     const userId: string | undefined = data?.user?._id;
 
-    const sess = useQuery(SESSIONS_FOR_CLIENT, {
+    const sess = useCachedQuery(SESSIONS_FOR_CLIENT, {
         variables: { clientId: userId as string, pageNumber: 1, pageSize: 20 },
         skip: !userId,
-        fetchPolicy: "no-cache",
     });
 
-    const pr = useQuery(PROGRESS_REPORT, {
+    const pr = useCachedQuery(PROGRESS_REPORT, {
         variables: { userId: userId as string },
         skip: !userId,
-        fetchPolicy: "no-cache",
     });
+
+    const [refreshing, setRefreshing] = useState(false);
+    const handleRefresh = useCallback(async () => {
+        if (refreshing) return;
+        setRefreshing(true);
+        try {
+            const tasks: Promise<any>[] = [refetch()];
+            if (userId) {
+                tasks.push(sess.refetch(), pr.refetch());
+            }
+            await Promise.all(tasks);
+        } catch (error) {
+            console.warn("Home refresh failed", error);
+        } finally {
+            setRefreshing(false);
+        }
+    }, [refreshing, refetch, sess.refetch, pr.refetch, userId]);
 
     const allSessions = (sess.data?.sessionsForClient ?? []).slice();
     const totalSessions = allSessions.filter((session) => session.status === "CONFIRMED").length;
@@ -281,7 +322,12 @@ export default function Home() {
 
     return (
         <Box flex={1} bg="#05060A" safeAreaTop>
-            <ScrollView flex={1} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
+            <ScrollView
+                flex={1}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 80 }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#fff" />}
+            >
                 <VStack space={6} p={6}>
                     <Box
                         p={5}

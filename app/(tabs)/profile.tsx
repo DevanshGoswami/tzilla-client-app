@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import {
   Box,
   VStack,
@@ -10,19 +10,33 @@ import {
   Button,
   Actionsheet,
   useDisclose,
-  useToast,
 } from "native-base";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useQuery } from "@apollo/client/react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { GET_ME } from "@/graphql/queries";
 import { logout } from "@/lib/apollo";
+import { useAppToast } from "@/providers/AppToastProvider";
+import { RefreshControl } from "react-native";
 
 export default function ProfileScreen() {
-  const { data } = useQuery(GET_ME);
+  const { data, refetch } = useCachedQuery(GET_ME);
   const me = data?.user;
-  const toast = useToast();
+  const toast = useAppToast();
   const { isOpen, onOpen, onClose } = useDisclose();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refetch();
+    } catch (error) {
+      console.warn("Profile refresh failed", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, refetch]);
 
   const handleLogout = async () => {
     try {
@@ -40,7 +54,13 @@ export default function ProfileScreen() {
 
   return (
     <Box flex={1} bg="#05060A" safeArea>
-      <ScrollView contentContainerStyle={{ padding: 20 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ padding: 20 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#fff" />
+        }
+      >
         <VStack space={4}>
           <Box
             p={5}

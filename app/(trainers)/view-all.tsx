@@ -171,7 +171,7 @@ export default function ViewAllTrainers() {
                             const p = t.professional;
                             const displayName = t.user?.name || humanBusinessType(p.businessType);
                             const specialtyText = specialtiesToText(p.specialties ?? []);
-                            const avatarUri = t.user?.avatarUrl || getAvatarUri(p.profilePhoto);
+                            const avatarUri = getAvatarUri(p.profilePhoto) || t.user?.avatarUrl;
                             const cityCountry = [t.contact?.city, t.contact?.country].filter(Boolean).join(", ");
 
                             return (

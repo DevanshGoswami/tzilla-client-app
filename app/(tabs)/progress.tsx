@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useRef } from "react";
 import {
   Box,
   Button,
@@ -6,6 +6,7 @@ import {
   Heading,
   ScrollView as NBScrollView,
   Skeleton,
+  Spinner,
   Text,
   VStack,
   useDisclose,
@@ -15,12 +16,14 @@ import {
   Modal as RNModal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView as RNScrollView,
   TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useMutation } from "@apollo/client/react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { gql } from "@apollo/client";
 import { useFocusEffect } from "@react-navigation/native";
 import Screen from "@/components/ui/Screen";
@@ -488,48 +491,79 @@ function WeightEntryModal({
    Screen
 ================================= */
 export default function ProgressSection() {
-  const { data: meData } = useQuery(GET_ME);
+  const { data: meData, loading: meLoading } = useCachedQuery(GET_ME);
   const userId: string | undefined = meData?.user?._id;
+
+  if (meLoading || !userId) {
+    return (
+      <Screen withHeader backgroundColor={THEME_BG} headerColor={THEME_BG}>
+        <Box flex={1} alignItems="center" justifyContent="center" bg={THEME_BG}>
+          <Spinner color="violet.400" size="lg" />
+          <Text color="coolGray.300" mt={4}>
+            Loading your progress...
+          </Text>
+        </Box>
+      </Screen>
+    );
+  }
+
+  return <ProgressContent userId={userId} />;
+}
+
+function ProgressContent({ userId }: { userId: string }) {
   const { isOpen, onOpen, onClose } = useDisclose();
 
   const {
     data: profileData,
     loading: profileLoading,
     refetch: refetchProfile,
-  } = useQuery(FITNESS_PROFILE, {
-    variables: { userId: userId as string },
-    skip: !userId,
-    fetchPolicy: "no-cache",
+  } = useCachedQuery(FITNESS_PROFILE, {
+    variables: { userId },
   });
 
   const {
     data: progressData,
     loading: progressLoading,
     refetch: refetchProgress,
-  } = useQuery(PROGRESS_REPORT, {
-    variables: { userId: userId as string },
-    skip: !userId,
-    fetchPolicy: "no-cache",
+  } = useCachedQuery(PROGRESS_REPORT, {
+    variables: { userId },
   });
 
   const {
     data: sessionsData,
     loading: sessionLoading,
     refetch: refetchSessions,
-  } = useQuery(SESSIONS_FOR_CLIENT, {
-    variables: { clientId: userId as string, pageNumber: 1, pageSize: 50 },
-    skip: !userId,
-    fetchPolicy: "no-cache",
+  } = useCachedQuery(SESSIONS_FOR_CLIENT, {
+    variables: { clientId: userId, pageNumber: 1, pageSize: 50 },
   });
 
+  const lastFocusRef = useRef(0);
+  const [refreshing, setRefreshing] = useState(false);
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
+      const now = Date.now();
+      if (now - lastFocusRef.current < 60_000) {
+        return;
+      }
+      lastFocusRef.current = now;
       refetchProfile();
       refetchProgress();
       refetchSessions();
     }, [userId, refetchProfile, refetchProgress, refetchSessions])
   );
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing || !userId) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchProfile(), refetchProgress(), refetchSessions()]);
+    } catch (error) {
+      console.warn("Progress refresh failed", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, userId, refetchProfile, refetchProgress, refetchSessions]);
 
   const [addProgress, { loading: saving }] = useMutation(ADD_PROGRESS, {
     onCompleted: () => {
@@ -594,6 +628,13 @@ export default function ProgressSection() {
           flex={1}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ padding: 24, paddingBottom: 120 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#fff"
+            />
+          }
         >
           <VStack space={6}>
             <HStack alignItems="center" justifyContent="space-between">
@@ -865,4 +906,3 @@ export default function ProgressSection() {
     </Screen>
   );
 }
-  const [showDatePicker, setShowDatePicker] = useState(false);

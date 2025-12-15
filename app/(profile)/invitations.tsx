@@ -10,7 +10,6 @@ import {
   Spinner,
   Badge,
   Button,
-  useToast,
   Icon,
   Avatar,
 } from "native-base";
@@ -19,6 +18,7 @@ import { router } from "expo-router";
 import { useQuery, useMutation } from "@apollo/client/react";
 import { GET_INVITATIONS_FOR_CLIENT, GET_ME } from "@/graphql/queries";
 import { RESPOND_TO_INVITATION } from "@/graphql/mutations";
+import { useAppToast } from "@/providers/AppToastProvider";
 
 type Invitation = {
   _id: string;
@@ -39,7 +39,7 @@ type Invitation = {
 };
 
 export default function InvitationsScreen() {
-  const toast = useToast();
+  const toast = useAppToast();
   const [pageNumber, setPageNumber] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);

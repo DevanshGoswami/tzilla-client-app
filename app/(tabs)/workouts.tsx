@@ -1,5 +1,6 @@
 import { gql } from "@apollo/client";
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useMutation } from "@apollo/client/react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import {
   Box,
   Button,
@@ -11,14 +12,14 @@ import {
   Skeleton,
   Text,
   useDisclose,
-  useToast,
   VStack,
 } from "native-base";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal as RNModal,
   Platform,
+  RefreshControl,
   ScrollView as RNScrollView,
   TextInput,
 } from "react-native";
@@ -27,6 +28,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { GET_ME } from "@/graphql/queries";
 import { getTokens } from "@/lib/apollo";
 import { getRuntimeConfigValue } from "@/lib/remoteConfig";
+import { useAppToast } from "@/providers/AppToastProvider";
 import { Image as ExpoImage } from "expo-image"; // ✅ cached images
 import { Ionicons } from "@expo/vector-icons";
 
@@ -1003,14 +1005,14 @@ function WorkoutDetailModal({
    Screen
 ================================ */
 export default function Workouts() {
-  const toast = useToast();
+  const toast = useAppToast();
   const { isOpen, onOpen, onClose } = useDisclose();
   const [selectedPlan, setSelectedPlan] = useState<GQLWorkoutPlan | null>(null);
   const [loggingOrder, setLoggingOrder] = useState<number | null>(null);
   const [selectedTrainerName, setSelectedTrainerName] = useState<string | null>(null);
 
   // who am i
-  const { data: meData } = useQuery(GET_ME);
+  const { data: meData, refetch: refetchMe } = useCachedQuery(GET_ME);
   // @ts-ignore
   const clientId: string | undefined = meData?.user?._id;
 
@@ -1044,19 +1046,23 @@ export default function Workouts() {
     loading: plansLoading,
     error: plansErr,
     refetch: refetchPlans,
-  } = useQuery<{ workoutPlansForClient: GQLWorkoutPlan[] }>(
+  } = useCachedQuery<{ workoutPlansForClient: GQLWorkoutPlan[] }>(
     WORKOUT_PLANS_FOR_CLIENT,
     {
       variables: { clientId: clientId as string, pageNumber: 1, pageSize: 20 },
       skip: !clientId,
-      fetchPolicy: "no-cache",
-      nextFetchPolicy: "no-cache",
     }
   );
 
+  const lastPlanRefreshRef = useRef(0);
   useFocusEffect(
     useCallback(() => {
       if (!clientId) return;
+      const now = Date.now();
+      if (now - lastPlanRefreshRef.current < 60_000) {
+        return;
+      }
+      lastPlanRefreshRef.current = now;
       refetchPlans();
     }, [clientId, refetchPlans])
   );
@@ -1069,7 +1075,7 @@ export default function Workouts() {
     );
   }, [plansResp]);
 
-  const { data: trainersData } = useQuery<{
+  const { data: trainersData, refetch: refetchTrainers } = useCachedQuery<{
     getTrainersForClient: {
       _id: string;
       name: string;
@@ -1168,13 +1174,28 @@ export default function Workouts() {
     loading: logsLoading,
     error: logsErr,
     refetch: refetchLogs,
-  } = useQuery(WORKOUT_LOGS_BY_DATE, {
+  } = useCachedQuery(WORKOUT_LOGS_BY_DATE, {
     variables: { clientId: clientId as string, date: isoDate },
     skip: !clientId,
-    fetchPolicy: "no-cache",
-    nextFetchPolicy: "no-cache",
   });
   const workoutLogs = logsResp?.workoutLogsByDate ?? [];
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const tasks: Promise<any>[] = [refetchMe(), refetchTrainers()];
+      if (clientId) {
+        tasks.push(refetchPlans(), refetchLogs());
+      }
+      await Promise.all(tasks);
+    } catch (error) {
+      console.warn("Workouts refresh failed", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, refetchMe, refetchTrainers, clientId, refetchPlans, refetchLogs]);
 
   // mutation + saver
   const [runAddWorkoutLog, { loading: creatingLog }] =
@@ -1324,6 +1345,9 @@ export default function Workouts() {
         flex={1}
         contentContainerStyle={{ paddingBottom: 96 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#fff" />
+        }
       >
         <VStack px={5} pt={6} space={6}>
           {/* Header */}

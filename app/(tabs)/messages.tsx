@@ -2,7 +2,7 @@ import { GET_ME, GET_TRAINERS_FOR_CLIENT } from "@/graphql/queries";
 import { getTokens } from "@/lib/apollo";
 import { useRuntimeConfig } from "@/lib/remoteConfig";
 import { useSocket } from "@/providers/SocketProvider";
-import { useQuery } from "@apollo/client/react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
@@ -321,7 +321,7 @@ export default function ChatList() {
     data: meData,
     loading: meLoading,
     error: meError,
-  } = useQuery(GET_ME, { fetchPolicy: "no-cache" });
+  } = useCachedQuery(GET_ME);
   // @ts-ignore
   const me = meData?.getMe ?? meData?.me ?? meData?.user;
   const userId: string | undefined = me?._id || me?.id || me?.userId;
@@ -331,9 +331,8 @@ export default function ChatList() {
     loading: trainersLoading,
     error: trainersError,
     refetch: refetchTrainers,
-  } = useQuery(GET_TRAINERS_FOR_CLIENT, {
+  } = useCachedQuery(GET_TRAINERS_FOR_CLIENT, {
     variables: { pagination: { pageNumber: 1, pageSize: 50 } },
-    fetchPolicy: "no-cache",
     skip: !userId,
   });
   // @ts-ignore

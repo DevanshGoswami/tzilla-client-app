@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { Alert, RefreshControl } from "react-native";
-import { useQuery } from "@apollo/client/react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { router } from "expo-router";
 import {
     Actionsheet,
@@ -117,7 +117,7 @@ export default function SessionsScreen() {
     const pageSize = 20;
     const { isOpen: trainerSheetOpen, onOpen: openTrainerSheet, onClose: closeTrainerSheet } = useDisclose();
 
-    const { data: meData, loading: meLoading } = useQuery(GET_ME);
+    const { data: meData, loading: meLoading } = useCachedQuery(GET_ME);
     // @ts-ignore
     const clientId = meData?.user?._id;
 
@@ -126,10 +126,8 @@ export default function SessionsScreen() {
         loading,
         refetch,
         fetchMore,
-    } = useQuery<TrainersQueryData>(GET_TRAINERS_FOR_CLIENT, {
+    } = useCachedQuery<TrainersQueryData>(GET_TRAINERS_FOR_CLIENT, {
         variables: { pagination: { pageNumber, pageSize } },
-        fetchPolicy: "no-cache",
-        nextFetchPolicy: "no-cache",
         notifyOnNetworkStatusChange: true,
     });
 
@@ -137,7 +135,7 @@ export default function SessionsScreen() {
         data: sessionsData,
         loading: sessionsLoading,
         refetch: refetchSessions,
-    } = useQuery<{ sessionsForClient: Session[] }>(GET_SESSIONS_FOR_CLIENT, {
+    } = useCachedQuery<{ sessionsForClient: Session[] }>(GET_SESSIONS_FOR_CLIENT, {
         variables: { clientId: clientId || "", pagination: { pageNumber: 1, pageSize: 80 } },
         skip: !clientId,
         notifyOnNetworkStatusChange: true,

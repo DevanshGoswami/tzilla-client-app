@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import {FITNESS_PROFILE, GET_ME} from "@/graphql/queries";
 import { router } from "expo-router";
@@ -16,7 +16,10 @@ export function useEnsureFitnessProfile() {
         fetchPolicy: "network-only", // don't rely on any older cache
     });
 
+    const [validated, setValidated] = useState(false);
+
     useEffect(() => {
+        if (validated) return;
         if (skip || loading || meLoading) return;
         // @ts-ignore
         const noProfile = !data?.fitnessProfile?.profile;
@@ -25,7 +28,8 @@ export function useEnsureFitnessProfile() {
             router.replace("/(onboarding)/onboard");
             return;
         }
-    }, [skip, loading, data, error, meLoading]);
+        setValidated(true);
+    }, [skip, loading, data, error, meLoading, validated]);
 
-    return { loading };
+    return { loading: !validated };
 }

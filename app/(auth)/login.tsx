@@ -17,12 +17,12 @@ import {
   Modal,
   ScrollView,
   Text,
-  useToast,
   VStack,
 } from "native-base";
 import React, { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import Svg, { ClipPath, Defs, G, Path, Rect } from "react-native-svg";
+import { useAppToast } from "@/providers/AppToastProvider";
 import { GOOGLE_AUTH_SIGN_IN } from "../../graphql/mutations";
 import { saveTokens } from "../../lib/apollo";
 import { useRuntimeConfig } from "@/lib/remoteConfig";
@@ -63,7 +63,7 @@ export default function Login() {
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [googleAuthSignIn, { loading }] = useMutation(GOOGLE_AUTH_SIGN_IN);
   const [showTerms, setShowTerms] = useState(false);
-  const toast = useToast();
+  const toast = useAppToast();
 
   useEffect(() => {
     GoogleSignin.configure({

@@ -43,7 +43,6 @@ function ChatHeader({
     online,
     busy,
     onBack,
-    onBook,
 }: {
     name?: string;
     trainerId: string;
@@ -51,7 +50,6 @@ function ChatHeader({
     online: boolean;
     busy?: boolean;
     onBack: () => void;
-    onBook: () => void;
 }) {
     const displayName = name || trainerId || "Trainer";
     const initials = displayName?.charAt(0).toUpperCase() || "T";
@@ -74,14 +72,6 @@ function ChatHeader({
                     </View>
                 </View>
             </View>
-            <Pressable
-                accessibilityRole="button"
-                onPress={onBook}
-                style={styles.chatHeaderBook}
-            >
-                <Ionicons name="calendar-outline" size={16} color="#05030D" />
-                <Text style={styles.chatHeaderBookText}>Book</Text>
-            </Pressable>
         </View>
     );
 }
@@ -140,20 +130,6 @@ const styles = StyleSheet.create({
     chatHeaderStatusText: {
         color: TEXT_SOFT,
         fontSize: 12,
-    },
-    chatHeaderBook: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: ACCENT,
-        borderRadius: 999,
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        marginLeft: 8,
-    },
-    chatHeaderBookText: {
-        color: "#05030D",
-        fontWeight: "800",
-        marginLeft: 6,
     },
     listContent: {
         paddingTop: 8,
@@ -815,7 +791,6 @@ export default function ChatRoom() {
                         online={isTrainerOnline}
                         busy={!socket?.connected || joining}
                         onBack={() => router.back()}
-                        onBook={() => router.push({ pathname: "/(sessions)/[trainerId]", params: { trainerId: String(trainerId) } })}
                     />
 
                     <Box flex={1} bg={THEME_BG}>

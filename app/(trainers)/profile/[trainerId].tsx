@@ -8,7 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useSelectedTrainerStore } from "@/store/selectedTrainerStore";
-import { GET_ME, ACTIVE_CLIENT_SUBSCRIPTIONS_V2 } from "@/graphql/queries";
+import { GET_ME, ACTIVE_CLIENT_SUBSCRIPTIONS_V2, GET_INVITATIONS_FOR_CLIENT } from "@/graphql/queries";
 import { REQUEST_INVITATION } from "@/graphql/mutations";
 import { Alert } from "react-native";
 import { getTokens, onTokensChanged } from "@/lib/apollo";
@@ -133,6 +133,34 @@ export default function TrainerProfileScreen() {
         return subs.length > 0;
     }, [activeSubData]);
 
+    const {
+        data: invitationsData,
+        loading: invitationsLoading,
+    } = useQuery(GET_INVITATIONS_FOR_CLIENT, {
+        variables: {
+            clientEmail: clientEmail as string,
+            pagination: { pageNumber: 1, pageSize: 50 },
+        },
+        skip: !clientEmail,
+        fetchPolicy: "network-only",
+    });
+
+    const invitationForTrainer = useMemo(() => {
+        const all = invitationsData?.getInvitationsForClient ?? [];
+        return all.find((inv: any) => inv.trainerId === trainerUserId);
+    }, [invitationsData, trainerUserId]);
+
+    const remoteInvitationPending =
+        invitationForTrainer &&
+        ["REQUESTED", "PENDING"].includes(invitationForTrainer.status ?? "");
+    const remoteInvitationAccepted = invitationForTrainer?.status === "ACCEPTED";
+
+    useEffect(() => {
+        if (remoteInvitationPending || remoteInvitationAccepted) {
+            setInvitationSent(true);
+        }
+    }, [remoteInvitationPending, remoteInvitationAccepted]);
+
     const [requestInvitation, { loading: inviteLoading }] = useMutation(
         REQUEST_INVITATION,
         {
@@ -178,7 +206,7 @@ export default function TrainerProfileScreen() {
     const availability = t.availability;
     const plans = trainerWithPlans.subscriptionPlans;
     const displayName = t.user?.name || humanBusinessType(p.businessType);
-    const profileAvatarUri = t.user?.avatarUrl || getImageUri(p.profilePhoto);
+    const profileAvatarUri = getImageUri(p.profilePhoto) || t.user?.avatarUrl;
     const avatarInitial = displayName?.trim?.().charAt(0).toUpperCase() || "T";
 
     const onRequestInvitation = () => {
@@ -269,7 +297,7 @@ export default function TrainerProfileScreen() {
 
                 <View style={styles.inviteCard}>
                     <Text style={styles.sectionTitle}>Work with {displayName.split(" ")[0]}</Text>
-                    {meLoading || activeSubLoading ? (
+                    {meLoading || activeSubLoading || invitationsLoading ? (
                         <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
                     ) : hasActiveSubscription ? (
                         <Text style={styles.successText}>
@@ -284,23 +312,32 @@ export default function TrainerProfileScreen() {
                             </Text>
                             <TouchableOpacity
                                 onPress={onRequestInvitation}
-                                disabled={inviteLoading || invitationSent}
+                                disabled={inviteLoading || invitationSent || remoteInvitationPending || remoteInvitationAccepted}
                                 style={[
                                     styles.primaryButton,
-                                    (inviteLoading || invitationSent) && styles.primaryButtonDisabled,
+                                    (inviteLoading || invitationSent || remoteInvitationPending || remoteInvitationAccepted) &&
+                                        styles.primaryButtonDisabled,
                                 ]}
                             >
                                 {inviteLoading ? (
                                     <ActivityIndicator color="#05030D" />
                                 ) : (
                                     <Text style={styles.primaryButtonText}>
-                                        {invitationSent ? "Invitation sent" : "Request invitation"}
+                                        {remoteInvitationAccepted
+                                            ? "Invitation accepted"
+                                            : remoteInvitationPending
+                                              ? "Invitation pending"
+                                              : invitationSent
+                                                ? "Invitation sent"
+                                                : "Request invitation"}
                                     </Text>
                                 )}
                             </TouchableOpacity>
-                            {invitationSent && (
+                            {(remoteInvitationPending || remoteInvitationAccepted || invitationSent) && (
                                 <Text style={styles.successText}>
-                                    We’ll notify you as soon as the trainer responds.
+                                    {remoteInvitationAccepted
+                                        ? "This trainer has already accepted your invitation."
+                                        : "We’ll notify you as soon as the trainer responds."}
                                 </Text>
                             )}
                         </>
@@ -365,7 +402,8 @@ export default function TrainerProfileScreen() {
                                     <View style={styles.planHeader}>
                                         <Text style={styles.planName}>{plan.name}</Text>
                                         <Text style={styles.planPrice}>
-                                            ₹{plan.amount} · {plan.interval}x {plan.period.toLowerCase()}
+                                            ₹{(plan.amount / 100).toFixed(2)} · {plan.interval}x{" "}
+                                            {plan.period.toLowerCase()}
                                         </Text>
                                     </View>
                                     {plan.description ? (

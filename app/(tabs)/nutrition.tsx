@@ -3,8 +3,10 @@ import Screen from "@/components/ui/Screen";
 import { GET_ME } from "@/graphql/queries";
 import { getTokens } from "@/lib/apollo";
 import { useRuntimeConfig } from "@/lib/remoteConfig";
+import { useAppToast } from "@/providers/AppToastProvider";
 import { gql } from "@apollo/client";
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useMutation } from "@apollo/client/react";
+import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { FontAwesome5, Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
@@ -20,17 +22,18 @@ import {
   Image,
   ScrollView,
   Skeleton,
+  Spinner,
   Text,
   VStack,
-  useToast,
 } from "native-base";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   Modal as RNModal,
   ScrollView as RNScrollView,
   TextInput,
@@ -169,7 +172,12 @@ function getWeekday(d: Date): Weekday {
     "SATURDAY",
   ][i] as Weekday;
 }
-const toISO = (d: Date) => d.toISOString().slice(0, 10);
+const toLocalISODate = (d: Date) => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 const addDays = (d: Date, delta: number) => {
   const n = new Date(d);
   n.setDate(n.getDate() + delta);
@@ -571,7 +579,7 @@ function AddFoodInlinePanel({
   onSave: (p: SavePayload) => void;
   saving?: boolean;
 }) {
-  const toast = useToast();
+  const toast = useAppToast();
 
   const [name, setName] = useState(defaults?.name ?? "");
   const [desc, setDesc] = useState(defaults?.description ?? "");
@@ -1140,17 +1148,39 @@ function MealCard({
   );
 }
 
+type NutritionContentProps = {
+  clientId: string;
+  refetchMe: () => Promise<any>;
+};
+
 /* ──────────────────────────────────────────────────────────────────────────
    Screen
    ────────────────────────────────────────────────────────────────────────── */
 
 export default function NutritionScreen() {
-  const runtimeConfig = useRuntimeConfig();
-  const toast = useToast();
-
-  const { data: meData } = useQuery(GET_ME);
+  const { data: meData, loading: meLoading, refetch: refetchMe } = useCachedQuery(GET_ME);
   // @ts-ignore
   const clientId: string | undefined = meData?.user?._id;
+
+  if (meLoading || !clientId) {
+    return (
+      <Screen withHeader backgroundColor={THEME_BG} headerColor={THEME_BG}>
+        <Box flex={1} alignItems="center" justifyContent="center" bg={THEME_BG}>
+          <Spinner color="violet.400" size="lg" />
+          <Text color="coolGray.300" mt={4}>
+            Loading nutrition data...
+          </Text>
+        </Box>
+      </Screen>
+    );
+  }
+
+  return <NutritionContent clientId={clientId} refetchMe={refetchMe} />;
+}
+
+function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
+  const runtimeConfig = useRuntimeConfig();
+  const toast = useAppToast();
 
   // auth token (for S3 URL resolver)
   const [token, setToken] = useState<string | null>(null);
@@ -1173,7 +1203,7 @@ export default function NutritionScreen() {
 
   // date state
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const isoDate = useMemo(() => toISO(currentDate), [currentDate]);
+  const isoDate = useMemo(() => toLocalISODate(currentDate), [currentDate]);
   const todayWeekday = getWeekday(currentDate);
   const isFutureDay = useMemo(() => {
     const now = new Date();
@@ -1204,11 +1234,9 @@ export default function NutritionScreen() {
     data: fpData,
     loading: fpLoading,
     error: fpErr,
-  } = useQuery(FITNESS_PROFILE, {
-    variables: { userId: clientId as string },
-    skip: !clientId,
-    fetchPolicy: "no-cache",
-    nextFetchPolicy: "no-cache",
+    refetch: refetchProfile,
+  } = useCachedQuery(FITNESS_PROFILE, {
+    variables: { userId: clientId },
   });
 
   const {
@@ -1216,11 +1244,8 @@ export default function NutritionScreen() {
     loading: plansLoading,
     error: plansErr,
     refetch: refetchPlans,
-  } = useQuery(DIET_PLANS_FOR_CLIENT, {
-    variables: { clientId: clientId as string, pageNumber: 1, pageSize: 10 },
-    skip: !clientId,
-    fetchPolicy: "no-cache",
-    nextFetchPolicy: "no-cache",
+  } = useCachedQuery(DIET_PLANS_FOR_CLIENT, {
+    variables: { clientId, pageNumber: 1, pageSize: 10 },
   });
 
   const {
@@ -1228,19 +1253,33 @@ export default function NutritionScreen() {
     loading: logsLoading,
     error: logsErr,
     refetch: refetchLogs,
-  } = useQuery(DIET_LOGS_BY_DATE, {
-    variables: { clientId: clientId as string, date: isoDate },
-    skip: !clientId,
-    fetchPolicy: "no-cache",
-    nextFetchPolicy: "no-cache",
+  } = useCachedQuery(DIET_LOGS_BY_DATE, {
+    variables: { clientId, date: isoDate },
   });
 
+  const lastPlanRefreshRef = useRef(0);
+  const [refreshing, setRefreshing] = useState(false);
   useFocusEffect(
     useCallback(() => {
       if (!clientId) return;
+      const now = Date.now();
+      if (now - lastPlanRefreshRef.current < 60_000) return;
+      lastPlanRefreshRef.current = now;
       refetchPlans();
     }, [clientId, refetchPlans])
   );
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([refetchMe(), refetchProfile(), refetchPlans(), refetchLogs()]);
+    } catch (error) {
+      console.warn("Nutrition refresh failed", error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, refetchMe, refetchProfile, refetchPlans, refetchLogs]);
 
   // 🔧 use ONE clearly named mutation hook
   const [runAddDietLog] = useMutation(ADD_DIET_LOG);
@@ -1312,6 +1351,7 @@ export default function NutritionScreen() {
                 protein: m.macros.protein ?? undefined,
                 carbs: m.macros.carbs ?? undefined,
                 fat: m.macros.fat ?? undefined,
+                fiber: m.macros.fiber ?? undefined,
                 portionSizeG: m.macros.portionSizeG ?? undefined,
               }
             : undefined,
@@ -1414,16 +1454,22 @@ export default function NutritionScreen() {
     });
   };
   const handleLogPlanned = (m: UIMeal) => {
+    const portionLabel =
+      typeof m.macros?.portionSizeG === "number"
+        ? `${m.macros?.portionSizeG} g portion`
+        : undefined;
     setAddMode({
       planRef: { planId: m.planId, planMealOrder: m.order },
       defaults: {
         name: m.title,
         description: m.items?.[0] ?? "",
         calories: m.calories ?? (undefined as any),
+        quantity: portionLabel,
         macros: {
           protein: m.macros?.protein,
           carbs: m.macros?.carbs,
           fat: m.macros?.fat,
+          fiber: m.macros?.fiber,
         },
         source: "PLANNED",
         compliance: "ON_PLAN",
@@ -1536,6 +1582,13 @@ export default function NutritionScreen() {
           bg={THEME_BG}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 96 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#fff"
+            />
+          }
         >
           <VStack px={5} pt={6} pb={8} space={6}>
             <VStack space={3}>

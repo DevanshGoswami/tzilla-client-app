@@ -23,6 +23,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { apollo, getTokens, onTokensChanged } from "../lib/apollo"; // <— add onTokensChanged
+import { AppToastProvider } from "@/providers/AppToastProvider";
 
 const splashLogo = require("../assets/images/splash-icon.png");
 const PARTICLES = [
@@ -378,6 +379,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <SafeAreaProvider>
         <NativeBaseProvider>
+          <AppToastProvider>
           <NotificationPermissionGate />
           <ApolloProvider client={apollo}>
             {token ? (
@@ -400,6 +402,7 @@ export default function RootLayout() {
               </Stack>
             )}
           </ApolloProvider>
+          </AppToastProvider>
         </NativeBaseProvider>
       </SafeAreaProvider>
       {splashLayer}
