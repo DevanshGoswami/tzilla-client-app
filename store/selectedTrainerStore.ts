@@ -36,6 +36,8 @@ export interface TrainerWithPlans {
             clientName: string;
             timeline: string;
             transformationGoal: string;
+            beforeImages?: string[];
+            afterImages?: string[];
             resultsAndAchievements: string[];
         }[];
         testimonials?: {

@@ -319,6 +319,8 @@ export const TRAINERS_WITH_PLANS = gql`
                     clientName
                     timeline
                     transformationGoal
+                    beforeImages
+                    afterImages
                     resultsAndAchievements
                 }
                 testimonials {

@@ -1,5 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Image, SafeAreaView } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    View,
+    Text,
+    ScrollView,
+    TouchableOpacity,
+    StyleSheet,
+    ActivityIndicator,
+    Image,
+    SafeAreaView,
+    Modal,
+    Dimensions,
+    FlatList,
+} from "react-native";
 import { Avatar, Button } from "native-base";
 import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQuery } from "@apollo/client/react";
@@ -30,6 +42,10 @@ export default function TrainerProfileScreen() {
     const trainerWithPlans = selected;
     const [token, setToken] = useState<string | null>(null);
     const [imageMap, setImageMap] = useState<Record<string, string>>({});
+    const [imagePreview, setImagePreview] = useState<{ images: string[]; index: number } | null>(null);
+    const [previewCursor, setPreviewCursor] = useState(0);
+    const previewListRef = useRef<FlatList<string>>(null);
+    const previewWindowWidth = Dimensions.get("window").width;
 
     const { data: meData, loading: meLoading } = useQuery(GET_ME);
     // @ts-ignore
@@ -188,6 +204,17 @@ export default function TrainerProfileScreen() {
         { label: "Timezone", value: availability?.timezone || "Flexible" },
         { label: "Languages", value: languages.slice(0, 2).join(" • ") || "English" },
     ];
+
+    const openPreview = useCallback((images: string[], index = 0) => {
+        if (!images.length) return;
+        setPreviewCursor(index);
+        setImagePreview({ images, index });
+    }, []);
+
+    const closePreview = useCallback(() => {
+        setImagePreview(null);
+        setPreviewCursor(0);
+    }, []);
 
     return (
         <SafeAreaView style={styles.safeArea}>
@@ -407,14 +434,16 @@ export default function TrainerProfileScreen() {
                                         .map((img) => getImageUri(img))
                                         .filter((uri): uri is string => !!uri);
                                     if (!beforeUris.length && !afterUris.length) return null;
+                                    const combinedImages = [...beforeUris, ...afterUris];
                                     return (
                                         <View style={styles.transformationImagesRow}>
                                             {beforeUris.length ? (
-                                                <View style={styles.transformationImagePanel}>
-                                                    <Image
-                                                        source={{ uri: beforeUris[0] }}
-                                                        style={styles.transformationImage}
-                                                    />
+                                                <TouchableOpacity
+                                                    activeOpacity={0.9}
+                                                    style={styles.transformationImagePanel}
+                                                    onPress={() => openPreview(combinedImages, 0)}
+                                                >
+                                                    <Image source={{ uri: beforeUris[0] }} style={styles.transformationImage} />
                                                     <View style={styles.transformationImageShade} />
                                                     <Text style={styles.transformationImageBadge}>Before</Text>
                                                     {beforeUris.length > 1 ? (
@@ -424,14 +453,15 @@ export default function TrainerProfileScreen() {
                                                             </Text>
                                                         </View>
                                                     ) : null}
-                                                </View>
+                                                </TouchableOpacity>
                                             ) : null}
                                             {afterUris.length ? (
-                                                <View style={styles.transformationImagePanel}>
-                                                    <Image
-                                                        source={{ uri: afterUris[0] }}
-                                                        style={styles.transformationImage}
-                                                    />
+                                                <TouchableOpacity
+                                                    activeOpacity={0.9}
+                                                    style={styles.transformationImagePanel}
+                                                    onPress={() => openPreview(combinedImages, Math.max(0, beforeUris.length))}
+                                                >
+                                                    <Image source={{ uri: afterUris[0] }} style={styles.transformationImage} />
                                                     <View style={styles.transformationImageShade} />
                                                     <Text style={styles.transformationImageBadge}>After</Text>
                                                     {afterUris.length > 1 ? (
@@ -441,7 +471,7 @@ export default function TrainerProfileScreen() {
                                                             </Text>
                                                         </View>
                                                     ) : null}
-                                                </View>
+                                                </TouchableOpacity>
                                             ) : null}
                                         </View>
                                     );
@@ -481,6 +511,46 @@ export default function TrainerProfileScreen() {
                 ) : null}
                 </ScrollView>
             </View>
+            {imagePreview && (
+                <Modal visible transparent animationType="fade" onRequestClose={closePreview}>
+                    <View style={styles.previewBackdrop}>
+                        <TouchableOpacity style={styles.previewBackdropPress} activeOpacity={1} onPress={closePreview} />
+                        <View style={styles.previewCard}>
+                            <FlatList
+                                ref={previewListRef}
+                                data={imagePreview.images}
+                                keyExtractor={(uri, idx) => `${uri}-${idx}`}
+                                horizontal
+                                pagingEnabled
+                                initialScrollIndex={imagePreview.index}
+                                getItemLayout={(_, index) => ({
+                                    length: previewWindowWidth,
+                                    offset: previewWindowWidth * index,
+                                    index,
+                                })}
+                                showsHorizontalScrollIndicator={false}
+                                onMomentumScrollEnd={({ nativeEvent }) => {
+                                    const idx = Math.round(nativeEvent.contentOffset.x / previewWindowWidth);
+                                    setPreviewCursor(idx);
+                                }}
+                                renderItem={({ item }) => (
+                                    <View style={[styles.previewImageShell, { width: previewWindowWidth }]}>
+                                        <Image source={{ uri: item }} style={styles.previewImage} resizeMode="contain" />
+                                    </View>
+                                )}
+                            />
+                            <View style={styles.previewCounter}>
+                                <Text style={styles.previewCounterText}>
+                                    {previewCursor + 1} / {imagePreview.images.length}
+                                </Text>
+                            </View>
+                            <TouchableOpacity style={styles.previewClose} onPress={closePreview}>
+                                <Ionicons name="close" size={20} color="#fff" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
+            )}
         </SafeAreaView>
     );
 }
@@ -733,22 +803,25 @@ const styles = StyleSheet.create({
     },
     transformationImagesRow: {
         flexDirection: "row",
+        flexWrap: "wrap",
         gap: 12,
         marginTop: 12,
     },
     transformationImagePanel: {
-        flex: 1,
+        flexGrow: 1,
+        flexBasis: "48%",
         borderRadius: 18,
         overflow: "hidden",
         position: "relative",
         borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.08)",
-        minHeight: 140,
+        borderColor: "rgba(255,255,255,0.12)",
+        minHeight: 160,
         backgroundColor: "rgba(255,255,255,0.02)",
     },
     transformationImage: {
-        width: "100%",
-        height: "100%",
+        ...StyleSheet.absoluteFillObject,
+        width: undefined,
+        height: undefined,
     },
     transformationImageShade: {
         ...StyleSheet.absoluteFillObject,
@@ -780,6 +853,56 @@ const styles = StyleSheet.create({
         color: "#fff",
         fontSize: 11,
         fontWeight: "600",
+    },
+    previewBackdrop: {
+        flex: 1,
+        backgroundColor: "rgba(5,3,13,0.95)",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    previewBackdropPress: {
+        ...StyleSheet.absoluteFillObject,
+    },
+    previewCard: {
+        width: "100%",
+        height: "100%",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    previewImageShell: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 24,
+    },
+    previewImage: {
+        width: "100%",
+        height: "80%",
+    },
+    previewClose: {
+        position: "absolute",
+        top: 56,
+        right: 24,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    previewCounter: {
+        position: "absolute",
+        bottom: 48,
+        alignSelf: "center",
+        backgroundColor: "rgba(0,0,0,0.6)",
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 999,
+    },
+    previewCounterText: {
+        color: "#fff",
+        fontWeight: "700",
+        letterSpacing: 0.5,
     },
     testimonialCard: {
         flexDirection: "row",
