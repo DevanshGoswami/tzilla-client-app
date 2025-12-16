@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pedometer } from "expo-sensors";
 
 type DaySteps = { date: string; value: number };
@@ -23,6 +23,8 @@ export function useSteps() {
     const [last7, setLast7] = useState<DaySteps[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string>();
+    const initialTodayRef = useRef(0);
+    const watchLastValueRef = useRef(0);
 
     useEffect(() => {
         let cancelled = false;
@@ -64,11 +66,19 @@ export function useSteps() {
                 const todayISO = isoDay(startOfDay());
                 const todaySteps = results.find((r) => r.date === todayISO)?.value ?? 0;
                 setToday(todaySteps);
+                initialTodayRef.current = todaySteps;
+                watchLastValueRef.current = 0;
 
                 // (Optional) live subscription to increment “today” as user walks
                 sub = Pedometer.watchStepCount(({ steps }) => {
-                    // This increments since subscription start; we’ll just add it on top for a lively feel
-                    setToday((prev) => (typeof prev === "number" ? prev + steps : steps));
+                    const safeSteps = typeof steps === "number" && Number.isFinite(steps) ? steps : 0;
+                    const delta = safeSteps - watchLastValueRef.current;
+                    watchLastValueRef.current = safeSteps;
+                    if (delta <= 0) return;
+                    setToday((prev) => {
+                        const base = typeof prev === "number" ? prev : initialTodayRef.current;
+                        return base + delta;
+                    });
                 });
             } catch (e: any) {
                 if (!cancelled) setError(e?.message ?? "Failed to read steps");

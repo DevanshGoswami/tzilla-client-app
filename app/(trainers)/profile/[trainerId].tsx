@@ -73,6 +73,10 @@ export default function TrainerProfileScreen() {
         addKey(trainerWithPlans.trainer.professional.profilePhoto);
         trainerWithPlans.trainer.professional.gallery?.forEach(addKey);
         trainerWithPlans.trainer.testimonials?.forEach((ts) => addKey(ts.profileImage));
+        trainerWithPlans.trainer.transformations?.forEach((tf) => {
+            tf.beforeImages?.forEach(addKey);
+            tf.afterImages?.forEach(addKey);
+        });
         return Array.from(keys);
     }, [trainerWithPlans, imageMap]);
 
@@ -395,6 +399,53 @@ export default function TrainerProfileScreen() {
                                 <Text style={styles.metaText}>
                                     Goal: {item.transformationGoal.replace(/_/g, " ").toLowerCase()}
                                 </Text>
+                                {(() => {
+                                    const beforeUris = (item.beforeImages ?? [])
+                                        .map((img) => getImageUri(img))
+                                        .filter((uri): uri is string => !!uri);
+                                    const afterUris = (item.afterImages ?? [])
+                                        .map((img) => getImageUri(img))
+                                        .filter((uri): uri is string => !!uri);
+                                    if (!beforeUris.length && !afterUris.length) return null;
+                                    return (
+                                        <View style={styles.transformationImagesRow}>
+                                            {beforeUris.length ? (
+                                                <View style={styles.transformationImagePanel}>
+                                                    <Image
+                                                        source={{ uri: beforeUris[0] }}
+                                                        style={styles.transformationImage}
+                                                    />
+                                                    <View style={styles.transformationImageShade} />
+                                                    <Text style={styles.transformationImageBadge}>Before</Text>
+                                                    {beforeUris.length > 1 ? (
+                                                        <View style={styles.transformationImageCount}>
+                                                            <Text style={styles.transformationImageCountText}>
+                                                                +{beforeUris.length - 1}
+                                                            </Text>
+                                                        </View>
+                                                    ) : null}
+                                                </View>
+                                            ) : null}
+                                            {afterUris.length ? (
+                                                <View style={styles.transformationImagePanel}>
+                                                    <Image
+                                                        source={{ uri: afterUris[0] }}
+                                                        style={styles.transformationImage}
+                                                    />
+                                                    <View style={styles.transformationImageShade} />
+                                                    <Text style={styles.transformationImageBadge}>After</Text>
+                                                    {afterUris.length > 1 ? (
+                                                        <View style={styles.transformationImageCount}>
+                                                            <Text style={styles.transformationImageCountText}>
+                                                                +{afterUris.length - 1}
+                                                            </Text>
+                                                        </View>
+                                                    ) : null}
+                                                </View>
+                                            ) : null}
+                                        </View>
+                                    );
+                                })()}
                                 {item.resultsAndAchievements?.map((result, rIdx) => (
                                     <Text key={rIdx} style={styles.sectionBody}>
                                         • {result}
@@ -679,6 +730,56 @@ const styles = StyleSheet.create({
         color: TEXT_PRIMARY,
         fontWeight: "600",
         fontSize: 14,
+    },
+    transformationImagesRow: {
+        flexDirection: "row",
+        gap: 12,
+        marginTop: 12,
+    },
+    transformationImagePanel: {
+        flex: 1,
+        borderRadius: 18,
+        overflow: "hidden",
+        position: "relative",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.08)",
+        minHeight: 140,
+        backgroundColor: "rgba(255,255,255,0.02)",
+    },
+    transformationImage: {
+        width: "100%",
+        height: "100%",
+    },
+    transformationImageShade: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: "rgba(0,0,0,0.35)",
+    },
+    transformationImageBadge: {
+        position: "absolute",
+        bottom: 12,
+        left: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 999,
+        backgroundColor: "rgba(5,3,13,0.7)",
+        color: "#fff",
+        fontSize: 12,
+        fontWeight: "700",
+        textTransform: "uppercase",
+    },
+    transformationImageCount: {
+        position: "absolute",
+        top: 12,
+        right: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 999,
+        backgroundColor: "rgba(255,255,255,0.15)",
+    },
+    transformationImageCountText: {
+        color: "#fff",
+        fontSize: 11,
+        fontWeight: "600",
     },
     testimonialCard: {
         flexDirection: "row",

@@ -43,6 +43,15 @@ const ENV_KEY_MAP: Record<RemoteKey, string> = {
   googleWebClientId: "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID",
 };
 
+function envFlagEnabled(key: string): boolean {
+  const raw = process?.env?.[key];
+  if (!raw) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+const shouldSkipRemoteConfig = envFlagEnabled("EXPO_PUBLIC_SKIP_FIREBASE_REMOTE_CONFIG");
+
 function isRuntimeConfig(value: any): value is RuntimeConfig {
   if (!value || typeof value !== "object") return false;
   return (Object.keys(RC_KEYS) as RemoteKey[]).every((key) => {
@@ -115,6 +124,16 @@ function readRuntimeConfig(): RuntimeConfig {
 
 export async function ensureRemoteConfig(): Promise<RuntimeConfig> {
   if (initialized && cachedConfig) return cachedConfig;
+  if (shouldSkipRemoteConfig) {
+    if (!bundledRuntimeConfig) {
+      throw new Error(
+        "EXPO_PUBLIC_SKIP_FIREBASE_REMOTE_CONFIG is set but runtime config could not be built from .env or extra config."
+      );
+    }
+    cachedConfig = bundledRuntimeConfig;
+    initialized = true;
+    return cachedConfig;
+  }
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
