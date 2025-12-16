@@ -235,6 +235,14 @@ export default function RootLayout() {
     appStart,
     configReady,
   ]);
+  useEffect(() => {
+    if (!configError) return;
+    pulseLoopRef.current?.stop();
+    heartbeatLoopRef.current?.stop();
+    ringLoopRef.current?.stop();
+    setSplashAnimationStarted(true);
+    setSplashHidden(true);
+  }, [configError, heartbeatLoopRef, pulseLoopRef, ringLoopRef]);
 
   const pulseScale = pulse.interpolate({
     inputRange: [0, 1],
@@ -274,7 +282,8 @@ export default function RootLayout() {
     </>
   );
 
-  const splashLayer = !splashHidden && (
+  const showSplashLayer = !splashHidden && !configError;
+  const splashLayer = showSplashLayer && (
     <Animated.View style={[styles.splashOverlay, { opacity: splashFade }]}>
       <LinearGradient
         colors={["#050111", "#09041C", "#050111"]}

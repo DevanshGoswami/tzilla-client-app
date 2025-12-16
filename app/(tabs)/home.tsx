@@ -360,7 +360,6 @@ export default function Home() {
                         </HStack>
                         <HStack mt={4} space={3}>
                             <Pill icon="flame-outline" label="Consistency" value={`${totalSessions} sessions`} />
-                            <Pill icon="trophy-outline" label="Goal" value={user?.stats?.goal ?? "—"} />
                         </HStack>
                     </Box>
 

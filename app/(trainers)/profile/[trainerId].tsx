@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Image, SafeAreaView } from "react-native";
-import { Avatar, Badge, Button } from "native-base";
+import { Avatar, Button } from "native-base";
 import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { LinearGradient } from "expo-linear-gradient";
@@ -8,12 +8,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useSelectedTrainerStore } from "@/store/selectedTrainerStore";
-import { GET_ME, ACTIVE_CLIENT_SUBSCRIPTIONS_V2, GET_INVITATIONS_FOR_CLIENT } from "@/graphql/queries";
+import { GET_ME, ACTIVE_CLIENT_SUBSCRIPTIONS_V2 } from "@/graphql/queries";
 import { REQUEST_INVITATION } from "@/graphql/mutations";
 import { Alert } from "react-native";
 import { getTokens, onTokensChanged } from "@/lib/apollo";
 import { resolveS3KeyToUrl, isFullUrl } from "@/lib/media";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SCREEN_BG = "#05030D";
 const CARD_BG = "rgba(15,13,25,0.95)";
@@ -31,9 +30,6 @@ export default function TrainerProfileScreen() {
     const trainerWithPlans = selected;
     const [token, setToken] = useState<string | null>(null);
     const [imageMap, setImageMap] = useState<Record<string, string>>({});
-    const [invitationSent, setInvitationSent] = useState(false);
-    const trainerUserId = trainerWithPlans?.trainer.userId ?? (trainerId as string | undefined);
-    const invitationStorageKey = trainerUserId ? `trainer_invitation_sent_${trainerUserId}` : null;
 
     const { data: meData, loading: meLoading } = useQuery(GET_ME);
     // @ts-ignore
@@ -59,25 +55,6 @@ export default function TrainerProfileScreen() {
             unsub();
         };
     }, []);
-
-    useEffect(() => {
-        if (!invitationStorageKey) {
-            setInvitationSent(false);
-            return;
-        }
-        let cancelled = false;
-        (async () => {
-            try {
-                const stored = await AsyncStorage.getItem(invitationStorageKey);
-                if (!cancelled) setInvitationSent(!!stored);
-            } catch {
-                if (!cancelled) setInvitationSent(false);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [invitationStorageKey]);
 
     const humanBusinessType = (bt?: string | null) => {
         if (!bt) return "Trainer";
@@ -133,46 +110,27 @@ export default function TrainerProfileScreen() {
         return subs.length > 0;
     }, [activeSubData]);
 
-    const {
-        data: invitationsData,
-        loading: invitationsLoading,
-    } = useQuery(GET_INVITATIONS_FOR_CLIENT, {
-        variables: {
-            clientEmail: clientEmail as string,
-            pagination: { pageNumber: 1, pageSize: 50 },
+    const [requestInvitation, { loading: inviteLoading }] = useMutation(REQUEST_INVITATION, {
+        onCompleted: () => {
+            Alert.alert(
+                "Invitation sent",
+                "We’ve notified the trainer. You’ll hear back once they review your request."
+            );
         },
-        skip: !clientEmail,
-        fetchPolicy: "network-only",
+        onError: (error) => {
+            const alreadyRequested = error.graphQLErrors?.some(
+                (graphErr) => graphErr.extensions?.code === "BAD_REQUEST"
+            );
+            if (alreadyRequested) {
+                Alert.alert(
+                    "Already requested",
+                    "Looks like you’ve already requested this trainer. Please wait for their response."
+                );
+                return;
+            }
+            Alert.alert("Error!", "Unable to process the invitation right now. Please try again later.");
+        },
     });
-
-    const invitationForTrainer = useMemo(() => {
-        const all = invitationsData?.getInvitationsForClient ?? [];
-        return all.find((inv: any) => inv.trainerId === trainerUserId);
-    }, [invitationsData, trainerUserId]);
-
-    const remoteInvitationPending =
-        invitationForTrainer &&
-        ["REQUESTED", "PENDING"].includes(invitationForTrainer.status ?? "");
-    const remoteInvitationAccepted = invitationForTrainer?.status === "ACCEPTED";
-
-    useEffect(() => {
-        if (remoteInvitationPending || remoteInvitationAccepted) {
-            setInvitationSent(true);
-        }
-    }, [remoteInvitationPending, remoteInvitationAccepted]);
-
-    const [requestInvitation, { loading: inviteLoading }] = useMutation(
-        REQUEST_INVITATION,
-        {
-            onCompleted: async () => {
-                await markInvitationSent();
-                Alert.alert("Invitation sent", "We’ve notified the trainer. You’ll hear back once they review your request.");
-            },
-            onError: () => {
-                Alert.alert("Error!", "Error while fetching trainer details");
-            },
-        }
-    );
 
     if (!trainerWithPlans) {
         return (
@@ -185,18 +143,9 @@ export default function TrainerProfileScreen() {
         );
     }
 
+    const alreadyConnected = !!trainerWithPlans.isConnected;
     const t = trainerWithPlans.trainer;
     const p = t.professional;
-    const markInvitationSent = async () => {
-        if (!invitationStorageKey) return;
-        setInvitationSent(true);
-        try {
-            await AsyncStorage.setItem(invitationStorageKey, new Date().toISOString());
-        } catch {
-            // best-effort cache; failures only impact UI state
-        }
-    };
-
     const getImageUri = (value?: string | null) => {
         if (!value) return undefined;
         if (isFullUrl(value)) return value;
@@ -210,7 +159,6 @@ export default function TrainerProfileScreen() {
     const avatarInitial = displayName?.trim?.().charAt(0).toUpperCase() || "T";
 
     const onRequestInvitation = () => {
-        if (invitationSent) return;
         if (!clientEmail) {
             Alert.alert("Update profile", "Add your email to your profile before requesting an invitation.");
             return;
@@ -297,12 +245,17 @@ export default function TrainerProfileScreen() {
 
                 <View style={styles.inviteCard}>
                     <Text style={styles.sectionTitle}>Work with {displayName.split(" ")[0]}</Text>
-                    {meLoading || activeSubLoading || invitationsLoading ? (
+                    {meLoading || activeSubLoading ? (
                         <ActivityIndicator color="#fff" style={{ marginTop: 12 }} />
                     ) : hasActiveSubscription ? (
                         <Text style={styles.successText}>
                             You already have an active subscription with this trainer. Manage it from your
                             subscriptions screen.
+                        </Text>
+                    ) : alreadyConnected ? (
+                        <Text style={styles.successText}>
+                            You’re already connected with this trainer. Head to your subscriptions screen to keep the
+                            momentum going.
                         </Text>
                     ) : (
                         <>
@@ -312,34 +265,15 @@ export default function TrainerProfileScreen() {
                             </Text>
                             <TouchableOpacity
                                 onPress={onRequestInvitation}
-                                disabled={inviteLoading || invitationSent || remoteInvitationPending || remoteInvitationAccepted}
-                                style={[
-                                    styles.primaryButton,
-                                    (inviteLoading || invitationSent || remoteInvitationPending || remoteInvitationAccepted) &&
-                                        styles.primaryButtonDisabled,
-                                ]}
+                                disabled={inviteLoading}
+                                style={[styles.primaryButton, inviteLoading && styles.primaryButtonDisabled]}
                             >
                                 {inviteLoading ? (
                                     <ActivityIndicator color="#05030D" />
                                 ) : (
-                                    <Text style={styles.primaryButtonText}>
-                                        {remoteInvitationAccepted
-                                            ? "Invitation accepted"
-                                            : remoteInvitationPending
-                                              ? "Invitation pending"
-                                              : invitationSent
-                                                ? "Invitation sent"
-                                                : "Request invitation"}
-                                    </Text>
+                                    <Text style={styles.primaryButtonText}>Request invitation</Text>
                                 )}
                             </TouchableOpacity>
-                            {(remoteInvitationPending || remoteInvitationAccepted || invitationSent) && (
-                                <Text style={styles.successText}>
-                                    {remoteInvitationAccepted
-                                        ? "This trainer has already accepted your invitation."
-                                        : "We’ll notify you as soon as the trainer responds."}
-                                </Text>
-                            )}
                         </>
                     )}
                 </View>

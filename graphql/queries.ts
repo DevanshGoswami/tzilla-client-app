@@ -284,6 +284,7 @@ export const GET_TRAINER_CONTACT = gql`
 export const TRAINERS_WITH_PLANS = gql`
     query TrainersWithPlans($pageNumber: Int!, $pageSize: Int!) {
         trainersWithPlans(pagination: { pageNumber: $pageNumber, pageSize: $pageSize }) {
+            isConnected
             trainer {
                 _id
                 userId

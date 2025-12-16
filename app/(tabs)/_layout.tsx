@@ -3,12 +3,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, TouchableOpacity, View } from "react-native";
 import { useEnsureFitnessProfile } from "@/hooks/useEnsureFitnessProfile";
 import { Image, Text } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import logoLong from "../../assets/logo_long.png";
 
 
 export default function TabsLayout() {
 
     const { loading } = useEnsureFitnessProfile();
+    const insets = useSafeAreaInsets();
+    const extraBottom = Math.max(insets.bottom - 6, 0);
+    const tabPaddingBottom = 10 + extraBottom;
+    const tabHeight = 70 + extraBottom;
 
     if (loading) {
         return (
@@ -63,12 +68,15 @@ export default function TabsLayout() {
                 tabBarActiveTintColor: "#FFFFFF",
                 tabBarInactiveTintColor: "#7C7C8A",
                 tabBarStyle: {
-                    paddingBottom: 10,
+                    paddingBottom: tabPaddingBottom,
                     paddingTop: 10,
-                    height: 70,
+                    height: tabHeight,
                     backgroundColor: "#0F111A",
                     borderTopWidth: 1,
                     borderTopColor: "rgba(255,255,255,0.08)",
+                },
+                tabBarSafeAreaInsets: {
+                    bottom: Math.max(insets.bottom, 12),
                 },
                 tabBarLabelStyle: {
                     fontSize: 11,

@@ -22,7 +22,9 @@ import {
   RefreshControl,
   ScrollView as RNScrollView,
   TextInput,
+  TouchableWithoutFeedback,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 
 import { GET_ME } from "@/graphql/queries";
@@ -880,15 +882,19 @@ function WorkoutDetailModal({
       onRequestClose={onClose}
       transparent
     >
-      <Box flex={1} bg="rgba(4,5,10,0.92)">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{ flex: 1 }}
-        >
-          <RNScrollView
-            contentContainerStyle={{ padding: 24, paddingBottom: 96 }}
-            showsVerticalScrollIndicator={false}
-          >
+      <TouchableWithoutFeedback onPress={onClose} accessible={false}>
+        <Box flex={1} bg="rgba(4,5,10,0.92)">
+          <TouchableWithoutFeedback onPress={() => {}} accessible={false}>
+            <SafeAreaView style={{ flex: 1 }}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                style={{ flex: 1 }}
+              >
+                <RNScrollView
+                  contentContainerStyle={{ padding: 24, paddingBottom: 96 }}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
             <VStack space={4}>
               <HStack alignItems="center" justifyContent="space-between">
                 <Pressable onPress={onClose}>
@@ -996,8 +1002,11 @@ function WorkoutDetailModal({
             </VStack>
           </RNScrollView>
         </KeyboardAvoidingView>
-      </Box>
-    </RNModal>
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
+  </Box>
+</TouchableWithoutFeedback>
+</RNModal>
   );
 }
 

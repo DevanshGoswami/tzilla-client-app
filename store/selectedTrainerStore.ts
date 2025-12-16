@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 export interface TrainerWithPlans {
+    isConnected: boolean;
     trainer: {
         _id: string;
         userId: string;

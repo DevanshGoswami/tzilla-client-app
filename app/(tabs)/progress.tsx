@@ -19,6 +19,7 @@ import {
   RefreshControl,
   ScrollView as RNScrollView,
   TextInput,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -27,6 +28,7 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { gql } from "@apollo/client";
 import { useFocusEffect } from "@react-navigation/native";
 import Screen from "@/components/ui/Screen";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { GET_ME } from "@/graphql/queries";
 import WeightLineChartSvg from "@/components/WeightLineChart";
 
@@ -302,187 +304,204 @@ function WeightEntryModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <Box flex={1} bg="rgba(4,5,10,0.92)">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{ flex: 1 }}
-        >
-          <RNScrollView
-            flex={1}
-            contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
-            showsVerticalScrollIndicator={false}
-          >
-            <VStack space={3} alignItems="center" mb={3}>
-              <Ionicons name="fitness-outline" size={32} color={ACCENT} />
-              <Text fontSize="2xl" fontWeight="bold" color="white">
-                Log progress
-              </Text>
-              <Text fontSize="xs" color="coolGray.400" textAlign="center">
-                Capture today’s weight and measurements
-              </Text>
-            </VStack>
-            <GlassCard>
-              <VStack space={4}>
-                <VStack space={2}>
-                  <Text fontSize="xs" color="coolGray.400">
-                    Weight (kg)
-                  </Text>
-                  <TextInput
-                    value={weight}
-                    onChangeText={(t) => setWeight(sanitize(t))}
-                    keyboardType={decimalKeyboard}
-                    placeholder="e.g., 72.4"
-                    placeholderTextColor={INPUT_PLACEHOLDER}
-                    style={INPUT_STYLE}
-                  />
-                </VStack>
-                <VStack space={2}>
-                  <Text fontSize="xs" color="coolGray.400">
-                    Date
-                  </Text>
-                  <Pressable
-                    onPress={() => {
-                      setPickerDate(parseDateSafe(dateISO) ?? new Date());
-                      setShowDatePicker(true);
-                    }}
-                    style={[
-                      INPUT_STYLE,
-                      {
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      },
-                    ]}
-                  >
-                    <Text style={{ color: "white", fontWeight: "600" }}>
-                      {dateISO || todayISO()}
+      <TouchableWithoutFeedback onPress={onClose} accessible={false}>
+        <Box flex={1} bg="rgba(4,5,10,0.92)">
+          <TouchableWithoutFeedback onPress={() => {}} accessible={false}>
+            <SafeAreaView style={{ flex: 1 }}>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                style={{ flex: 1 }}
+              >
+                <RNScrollView
+                  flex={1}
+                  contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+              <VStack space={3} alignItems="center" mb={3}>
+                <Ionicons name="fitness-outline" size={32} color={ACCENT} />
+                <Text fontSize="2xl" fontWeight="bold" color="white">
+                  Log progress
+                </Text>
+                <Text fontSize="xs" color="coolGray.400" textAlign="center">
+                  Capture today’s weight and measurements
+                </Text>
+              </VStack>
+              <GlassCard>
+                <VStack space={4}>
+                  <VStack space={2}>
+                    <Text fontSize="xs" color="coolGray.400">
+                      Weight (kg)
                     </Text>
-                    <Ionicons name="calendar-outline" size={18} color={ACCENT} />
-                  </Pressable>
-                  {showDatePicker && (
-                    <RNModal
-                      transparent
-                      animationType="fade"
-                      onRequestClose={() => setShowDatePicker(false)}
-                    >
-                      <Box flex={1} bg="rgba(0,0,0,0.6)" justifyContent="center" px={6}>
-                        <GlassCard>
-                          <VStack space={4}>
-                            <Text fontSize="md" fontWeight="bold" color="white">
-                              Pick a date
-                            </Text>
-                            <DateTimePicker
-                              value={pickerDate ?? new Date()}
-                              mode="date"
-                              display={Platform.OS === "ios" ? "spinner" : "default"}
-                              maximumDate={new Date()}
-                              onChange={(_, selectedDate) => {
-                                if (selectedDate) setPickerDate(selectedDate);
-                              }}
-                            />
-                            <HStack justifyContent="flex-end" space={3}>
-                              <Pressable onPress={() => setShowDatePicker(false)}>
-                                <Text style={{ color: "coolGray.300", fontWeight: "600" }}>
-                                  Cancel
-                                </Text>
-                              </Pressable>
-                              <Pressable
-                                onPress={() => {
-                                  const finalDate =
-                                    (pickerDate ?? new Date()).toISOString().slice(0, 10);
-                                  setDateISO(finalDate);
-                                  setShowDatePicker(false);
-                                }}
-                                style={{
-                                  backgroundColor: ACCENT_SOLID,
-                                  paddingHorizontal: 18,
-                                  paddingVertical: 10,
-                                  borderRadius: 999,
-                                }}
-                              >
-                                <Text style={{ color: "white", fontWeight: "700" }}>
-                                  Set date
-                                </Text>
-                              </Pressable>
-                            </HStack>
-                          </VStack>
-                        </GlassCard>
-                      </Box>
-                    </RNModal>
-                  )}
-                </VStack>
-                <HStack space={3}>
-                  {[
-                    { label: "Neck (cm)", value: neck, setter: setNeck },
-                    { label: "Waist (cm)", value: waist, setter: setWaist },
-                    { label: "Hip (cm)", value: hip, setter: setHip },
-                  ].map((field) => (
-                    <VStack flex={1} space={2} key={field.label}>
-                      <Text fontSize="xs" color="coolGray.400">
-                        {field.label}
-                      </Text>
-                      <TextInput
-                        value={field.value}
-                        onChangeText={(t) => field.setter(sanitize(t))}
-                        keyboardType={decimalKeyboard}
-                        placeholder="—"
-                        placeholderTextColor={INPUT_PLACEHOLDER}
-                        style={INPUT_STYLE}
-                      />
-                    </VStack>
-                  ))}
-                </HStack>
-                <VStack space={2}>
-                  <Text fontSize="xs" color="coolGray.400">
-                    Notes
-                  </Text>
-                  <TextInput
-                    value={notes}
-                    onChangeText={setNotes}
-                    placeholder="Anything notable about today"
-                    placeholderTextColor={INPUT_PLACEHOLDER}
-                    style={[INPUT_STYLE, { minHeight: 70, textAlignVertical: "top" }]}
-                    multiline
-                  />
-                </VStack>
-
-                <HStack justifyContent="flex-end" space={3}>
-                  <Pressable onPress={onClose}>
-                    <Text style={{ color: "coolGray.300", fontWeight: "600" }}>
-                      Cancel
+                    <TextInput
+                      value={weight}
+                      onChangeText={(t) => setWeight(sanitize(t))}
+                      keyboardType={decimalKeyboard}
+                      placeholder="e.g., 72.4"
+                      placeholderTextColor={INPUT_PLACEHOLDER}
+                      style={INPUT_STYLE}
+                    />
+                  </VStack>
+                  <VStack space={2}>
+                    <Text fontSize="xs" color="coolGray.400">
+                      Date
                     </Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={!canSave || !!saving}
-                    onPress={() =>
-                      onSave({
-                        weightKg: parsedWeight,
-                        dateISO,
-                        measurements: {
-                          neckCm: asNumber(neck),
-                          waistCm: asNumber(waist),
-                          hipCm: asNumber(hip),
+                    <Pressable
+                      onPress={() => {
+                        setPickerDate(parseDateSafe(dateISO) ?? new Date());
+                        setShowDatePicker(true);
+                      }}
+                      style={[
+                        INPUT_STYLE,
+                        {
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
                         },
-                        notes: notes.trim() || undefined,
-                      })
-                    }
+                      ]}
+                    >
+                      <Text style={{ color: "white", fontWeight: "600" }}>
+                        {dateISO || todayISO()}
+                      </Text>
+                      <Ionicons name="calendar-outline" size={18} color={ACCENT} />
+                    </Pressable>
+                    {showDatePicker && (
+                      <RNModal
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setShowDatePicker(false)}
+                      >
+                        <Box flex={1} bg="rgba(0,0,0,0.6)" justifyContent="center" px={6}>
+                          <GlassCard>
+                            <VStack space={4}>
+                              <Text fontSize="md" fontWeight="bold" color="white">
+                                Pick a date
+                              </Text>
+                              <DateTimePicker
+                                value={pickerDate ?? new Date()}
+                                mode="date"
+                                display={Platform.OS === "ios" ? "spinner" : "default"}
+                                maximumDate={new Date()}
+                                onChange={(_, selectedDate) => {
+                                  if (selectedDate) setPickerDate(selectedDate);
+                                }}
+                              />
+                              <HStack justifyContent="flex-end" space={3}>
+                                <Pressable onPress={() => setShowDatePicker(false)}>
+                                  <Text style={{ color: "coolGray.300", fontWeight: "600" }}>
+                                    Cancel
+                                  </Text>
+                                </Pressable>
+                                <Pressable
+                                  onPress={() => {
+                                    const finalDate =
+                                      (pickerDate ?? new Date()).toISOString().slice(0, 10);
+                                    setDateISO(finalDate);
+                                    setShowDatePicker(false);
+                                  }}
+                                  style={{
+                                    backgroundColor: ACCENT_SOLID,
+                                    paddingHorizontal: 18,
+                                    paddingVertical: 10,
+                                    borderRadius: 999,
+                                  }}
+                                >
+                                  <Text style={{ color: "white", fontWeight: "700" }}>
+                                    Set date
+                                  </Text>
+                                </Pressable>
+                              </HStack>
+                            </VStack>
+                          </GlassCard>
+                        </Box>
+                      </RNModal>
+                    )}
+                  </VStack>
+                  <HStack space={3}>
+                    {[
+                      { label: "Neck (cm)", value: neck, setter: setNeck },
+                      { label: "Waist (cm)", value: waist, setter: setWaist },
+                      { label: "Hip (cm)", value: hip, setter: setHip },
+                    ].map((field) => (
+                      <VStack flex={1} space={2} key={field.label}>
+                        <Text fontSize="xs" color="coolGray.400">
+                          {field.label}
+                        </Text>
+                        <TextInput
+                          value={field.value}
+                          onChangeText={(t) => field.setter(sanitize(t))}
+                          keyboardType={decimalKeyboard}
+                          placeholder="—"
+                          placeholderTextColor={INPUT_PLACEHOLDER}
+                          style={INPUT_STYLE}
+                        />
+                      </VStack>
+                    ))}
+                  </HStack>
+                  <VStack space={2}>
+                    <Text fontSize="xs" color="coolGray.400">
+                      Notes
+                    </Text>
+                    <TextInput
+                      value={notes}
+                      onChangeText={setNotes}
+                      placeholder="Anything notable about today"
+                      placeholderTextColor={INPUT_PLACEHOLDER}
+                      style={[INPUT_STYLE, { minHeight: 70, textAlignVertical: "top" }]}
+                      multiline
+                    />
+                  </VStack>
+
+                  <HStack justifyContent="flex-end" space={3}>
+                  <Pressable
+                    onPress={onClose}
                     style={{
-                      backgroundColor: canSave ? ACCENT_SOLID : "rgba(124,58,237,0.4)",
+                      borderColor: BORDER_COLOR,
+                      borderWidth: 1,
                       paddingHorizontal: 20,
                       paddingVertical: 12,
                       borderRadius: 999,
+                      backgroundColor: "rgba(255,255,255,0.02)",
                     }}
                   >
-                    <Text style={{ color: "white", fontWeight: "700" }}>
-                      {saving ? "Saving..." : "Save log"}
+                    <Text style={{ color: "white", fontWeight: "600" }}>
+                      Cancel
                     </Text>
                   </Pressable>
-                </HStack>
-              </VStack>
-            </GlassCard>
-          </RNScrollView>
-        </KeyboardAvoidingView>
-      </Box>
+                    <Pressable
+                      disabled={!canSave || !!saving}
+                      onPress={() =>
+                        onSave({
+                          weightKg: parsedWeight,
+                          dateISO,
+                          measurements: {
+                            neckCm: asNumber(neck),
+                            waistCm: asNumber(waist),
+                            hipCm: asNumber(hip),
+                          },
+                          notes: notes.trim() || undefined,
+                        })
+                      }
+                      style={{
+                        backgroundColor: canSave ? ACCENT_SOLID : "rgba(124,58,237,0.4)",
+                        paddingHorizontal: 20,
+                        paddingVertical: 12,
+                        borderRadius: 999,
+                      }}
+                    >
+                      <Text style={{ color: "white", fontWeight: "700" }}>
+                        {saving ? "Saving..." : "Save log"}
+                      </Text>
+                    </Pressable>
+                  </HStack>
+                </VStack>
+              </GlassCard>
+                </RNScrollView>
+              </KeyboardAvoidingView>
+            </SafeAreaView>
+          </TouchableWithoutFeedback>
+        </Box>
+      </TouchableWithoutFeedback>
     </RNModal>
   );
 }

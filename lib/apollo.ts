@@ -1,4 +1,4 @@
-import { getRuntimeConfigValue } from "@/lib/remoteConfig";
+import { ensureRemoteConfig, getRuntimeConfigValue } from "@/lib/remoteConfig";
 import {
   ApolloClient,
   ApolloLink,
@@ -148,6 +148,8 @@ export async function refreshAccessToken(): Promise<string | null> {
 
     // Make a direct HTTP request to refresh the token
     // We can't use the Apollo client here to avoid circular dependencies
+    await ensureRemoteConfig();
+
     const response = await fetch(getRuntimeConfigValue("apiUrl") + "/graphql", {
       method: "POST",
       headers: {
@@ -305,10 +307,34 @@ const loggingLink = new ApolloLink((operation, forward) => {
 
 const link = ApolloLink.from([errorLink, authLink, loggingLink, httpLink]);
 
+const cache = new InMemoryCache({
+  typePolicies: {
+    FitnessProfile: {
+      keyFields: ["userId"],
+      fields: {
+        profile: {
+          merge(_existing, incoming) {
+            return incoming;
+          },
+        },
+      },
+    },
+    Query: {
+      fields: {
+        fitnessProfile: {
+          merge(_existing, incoming) {
+            return incoming;
+          },
+        },
+      },
+    },
+  },
+});
+
 // Create Apollo Client
 export const apollo = new ApolloClient({
   link,
-  cache: new InMemoryCache(),
+  cache,
   defaultOptions: {
     watchQuery: {
       fetchPolicy: "cache-and-network",

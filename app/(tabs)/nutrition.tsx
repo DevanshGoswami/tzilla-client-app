@@ -37,7 +37,9 @@ import {
   Modal as RNModal,
   ScrollView as RNScrollView,
   TextInput,
+  TouchableWithoutFeedback,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 /* ──────────────────────────────────────────────────────────────────────────
    GraphQL
@@ -676,16 +678,19 @@ function AddFoodInlinePanel({
       visible
       onRequestClose={onCancel}
     >
-      <Box flex={1} bg="rgba(3,4,10,0.92)">
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <ScrollView
-            flex={1}
-            contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
-            showsVerticalScrollIndicator={false}
-          >
+      <TouchableWithoutFeedback onPress={onCancel} accessible={false}>
+        <Box flex={1} bg="rgba(3,4,10,0.92)">
+          <TouchableWithoutFeedback onPress={() => {}} accessible={false}>
+            <SafeAreaView style={{ flex: 1 }}>
+              <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+              >
+                <RNScrollView
+                  contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
             <VStack space={3} alignItems="center" mb={3}>
               <Ionicons name="nutrition-outline" size={28} color={ACCENT} />
               <Text fontSize="2xl" fontWeight="bold" color="white">
@@ -984,10 +989,13 @@ function AddFoodInlinePanel({
                 </HStack>
               </VStack>
             </GlassCard>
-          </ScrollView>
+          </RNScrollView>
         </KeyboardAvoidingView>
-      </Box>
-    </RNModal>
+      </SafeAreaView>
+    </TouchableWithoutFeedback>
+  </Box>
+</TouchableWithoutFeedback>
+</RNModal>
   );
 }
 
@@ -2019,7 +2027,7 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
 
             <GlassCard>
               <VStack space={4}>
-                <HStack justifyContent="space-between" alignItems="center">
+                <VStack space={3}>
                   <HStack space={3} alignItems="center">
                     <Box
                       rounded="full"
@@ -2034,7 +2042,7 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
                         color="#93C5FD"
                       />
                     </Box>
-                    <VStack>
+                    <VStack flexShrink={1}>
                       <Text fontSize="md" fontWeight="semibold" color="white">
                         Hydration streak
                       </Text>
@@ -2045,24 +2053,28 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
                   </HStack>
                   <Pressable
                     onPress={addGlass}
-                    style={{
+                    style={({ pressed }) => ({
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 6,
+                      justifyContent: "center",
+                      gap: 8,
                       paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(59,130,246,0.2)",
+                      paddingVertical: 10,
+                      borderRadius: 16,
+                      backgroundColor: pressed
+                        ? "rgba(59,130,246,0.28)"
+                        : "rgba(59,130,246,0.18)",
                       borderWidth: 1,
                       borderColor: "rgba(59,130,246,0.4)",
-                    }}
+                      alignSelf: "stretch",
+                    })}
                   >
                     <Ionicons name="add" size={16} color="#BFDBFE" />
                     <Text style={{ color: "#E0F2FE", fontWeight: "700" }}>
                       Add glass
                     </Text>
                   </Pressable>
-                </HStack>
+                </VStack>
                 <HStack alignItems="center" space={4}>
                   <Box flex={1}>
                     <PercentBar
@@ -2074,8 +2086,17 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
                     {toInt((waterGlasses / 8) * 100)}%
                   </Text>
                 </HStack>
-                <HStack justifyContent="space-between" alignItems="center">
-                  <Text fontSize="xs" color="coolGray.400">
+                <HStack
+                  justifyContent="space-between"
+                  alignItems="center"
+                  flexWrap="wrap"
+                >
+                  <Text
+                    fontSize="xs"
+                    color="coolGray.400"
+                    flexShrink={1}
+                    mr={2}
+                  >
                     Stay consistent to keep your recovery on point.
                   </Text>
                   <HStack
@@ -2087,6 +2108,8 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
                     borderWidth={1}
                     borderColor="rgba(147,197,253,0.5)"
                     bg="rgba(147,197,253,0.12)"
+                    mt={{ base: 3, md: 0 }}
+                    alignSelf="flex-start"
                   >
                     <Ionicons name="beaker-outline" size={14} color="#93C5FD" />
                     <Text fontSize="xs" color="#E0F2FE" fontWeight="600">

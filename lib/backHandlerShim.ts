@@ -1,6 +1,8 @@
-import { BackHandler, Platform } from "react-native";
+import { BackHandler } from "react-native";
 
-if (Platform.OS === "android") {
+// React Native 0.79 removed BackHandler.removeEventListener, but some libraries still call it.
+// Shim it to keep those dependencies working on every platform.
+if (typeof BackHandler.addEventListener === "function") {
     const originalAddEventListener = BackHandler.addEventListener.bind(BackHandler);
     const subscriptions = new Map<(...args: any[]) => any, { remove?: () => void }>();
 
