@@ -382,6 +382,8 @@ function WeightEntryModal({
                                 mode="date"
                                 display={Platform.OS === "ios" ? "spinner" : "default"}
                                 maximumDate={new Date()}
+                                themeVariant={Platform.OS === "ios" ? "dark" : undefined}
+                                textColor={Platform.OS === "ios" ? "white" : undefined}
                                 onChange={(_, selectedDate) => {
                                   if (selectedDate) setPickerDate(selectedDate);
                                 }}

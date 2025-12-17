@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Box,
   VStack,
@@ -17,7 +17,8 @@ import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { GET_ME } from "@/graphql/queries";
 import { logout } from "@/lib/apollo";
 import { useAppToast } from "@/providers/AppToastProvider";
-import { RefreshControl } from "react-native";
+import { RefreshControl, Linking } from "react-native";
+import Constants from "expo-constants";
 
 export default function ProfileScreen() {
   const { data, refetch } = useCachedQuery(GET_ME);
@@ -25,6 +26,11 @@ export default function ProfileScreen() {
   const toast = useAppToast();
   const { isOpen, onOpen, onClose } = useDisclose();
   const [refreshing, setRefreshing] = useState(false);
+  const versionLabel = useMemo(() => {
+    const appVersion = Constants.expoConfig?.version ?? "—";
+    const buildNumber = Constants.expoConfig?.android?.versionCode ?? Constants.expoConfig?.ios?.buildNumber;
+    return buildNumber ? `${appVersion} (${buildNumber})` : appVersion;
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return;
@@ -51,6 +57,22 @@ export default function ProfileScreen() {
       });
     }
   };
+
+  const handleDeleteAccount = useCallback(async () => {
+    const url = "https://deletemyaccount.trainzilla.in";
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) throw new Error("Cannot open URL");
+      await Linking.openURL(url);
+    } catch (error) {
+      toast.show({
+        title: "Unable to open portal",
+        description: "Please try again shortly.",
+        bgColor: "red.500",
+        placement: "top",
+      });
+    }
+  }, [toast]);
 
   return (
     <Box flex={1} bg="#05060A" safeArea>
@@ -122,14 +144,26 @@ export default function ProfileScreen() {
             <MenuItem
               icon="information-circle-outline"
               title="About"
-              subtitle="Version 1.0.0"
+              subtitle={`Version ${versionLabel}`}
               onPress={onOpen}
             />
           </CardSection>
 
           <CardSection icon="log-out-outline" title="Account actions">
             <Button
+              onPress={handleDeleteAccount}
+              rounded="full"
+              borderWidth={1}
+              borderColor="rgba(248,113,113,0.4)"
+              bg="rgba(248,113,113,0.08)"
+              _text={{ color: "#F87171", fontWeight: "bold" }}
+              _pressed={{ bg: "rgba(248,113,113,0.18)" }}
+            >
+              Delete account
+            </Button>
+            <Button
               onPress={handleLogout}
+              mt={3}
               rounded="full"
               bg="rgba(248,113,113,0.15)"
               _text={{ color: "#F87171", fontWeight: "bold" }}
@@ -149,6 +183,9 @@ export default function ProfileScreen() {
           <Text fontSize="xs" color="coolGray.400" mt={2} textAlign="center">
             Your personal studio in your pocket. Streamlined coaching, precision nutrition, and accountability—anytime,
             anywhere.
+          </Text>
+          <Text fontSize="xs" color="coolGray.500" mt={3}>
+            Version {versionLabel}
           </Text>
           <Button mt={4} onPress={onClose} bg="#7C3AED" _text={{ color: "white", fontWeight: "700" }}>
             Close
