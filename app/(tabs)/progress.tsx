@@ -22,7 +22,7 @@ import {
   TouchableWithoutFeedback,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
 import { useMutation } from "@apollo/client/react";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import { gql } from "@apollo/client";
@@ -348,8 +348,23 @@ function WeightEntryModal({
                     </Text>
                     <Pressable
                       onPress={() => {
-                        setPickerDate(parseDateSafe(dateISO) ?? new Date());
-                        setShowDatePicker(true);
+                        const nextDate = parseDateSafe(dateISO) ?? new Date();
+                        if (Platform.OS === "android") {
+                          DateTimePickerAndroid.open({
+                            value: nextDate,
+                            mode: "date",
+                            maximumDate: new Date(),
+                            onChange: (event, selectedDate) => {
+                              if (event.type === "set" && selectedDate) {
+                                const finalDate = selectedDate.toISOString().slice(0, 10);
+                                setDateISO(finalDate);
+                              }
+                            },
+                          });
+                        } else {
+                          setPickerDate(nextDate);
+                          setShowDatePicker(true);
+                        }
                       }}
                       style={[
                         INPUT_STYLE,
@@ -365,7 +380,7 @@ function WeightEntryModal({
                       </Text>
                       <Ionicons name="calendar-outline" size={18} color={ACCENT} />
                     </Pressable>
-                    {showDatePicker && (
+                    {Platform.OS === "ios" && showDatePicker && (
                       <RNModal
                         transparent
                         animationType="fade"
