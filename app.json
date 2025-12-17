@@ -18,6 +18,7 @@
       }
     },
     "android": {
+      "versionCode": 2,
       "icon": "./assets/icons/android/res/mipmap-xxxhdpi/ic_launcher.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icons/android/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
