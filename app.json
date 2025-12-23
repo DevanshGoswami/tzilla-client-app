@@ -13,8 +13,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.devops.tzilla.trainzillaclient",
       "googleServicesFile": "./GoogleService-Info.plist",
+      "buildNumber": "3",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "TrainZilla needs photo access so you can upload progress photos and share images in messages.",
+        "NSPhotoLibraryAddUsageDescription": "TrainZilla saves progress photos you choose to keep on your device.",
+        "NSMotionUsageDescription": "TrainZilla uses motion data to track daily steps and show your activity progress."
       }
     },
     "android": {
