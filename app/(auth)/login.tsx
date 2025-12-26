@@ -1,9 +1,11 @@
 // Login.tsx
 import { useMutation } from "@apollo/client/react";
+import { FontAwesome } from "@expo/vector-icons";
 import {
   GoogleSignin,
   statusCodes,
 } from "@react-native-google-signin/google-signin";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -23,7 +25,7 @@ import React, { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import Svg, { ClipPath, Defs, G, Path, Rect } from "react-native-svg";
 import { useAppToast } from "@/providers/AppToastProvider";
-import { GOOGLE_AUTH_SIGN_IN } from "../../graphql/mutations";
+import { APPLE_AUTH_SIGN_IN, GOOGLE_AUTH_SIGN_IN } from "../../graphql/mutations";
 import { saveTokens } from "../../lib/apollo";
 import { useRuntimeConfig } from "@/lib/remoteConfig";
 
@@ -60,8 +62,14 @@ function GoogleGIcon({ size = 20 }: { size?: number }) {
 
 export default function Login() {
   const runtimeConfig = useRuntimeConfig();
-  const [isSigningIn, setIsSigningIn] = useState(false);
-  const [googleAuthSignIn, { loading }] = useMutation(GOOGLE_AUTH_SIGN_IN);
+  const [signingInProvider, setSigningInProvider] = useState<
+    "google" | "apple" | null
+  >(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [googleAuthSignIn, { loading: googleLoading }] =
+    useMutation(GOOGLE_AUTH_SIGN_IN);
+  const [appleAuthSignIn, { loading: appleLoading }] =
+    useMutation(APPLE_AUTH_SIGN_IN);
   const [showTerms, setShowTerms] = useState(false);
   const toast = useAppToast();
 
@@ -74,9 +82,24 @@ export default function Login() {
     });
   }, [runtimeConfig.googleWebClientId, runtimeConfig.googleIosClientId]);
 
+  useEffect(() => {
+    let isMounted = true;
+    if (Platform.OS !== "ios") return undefined;
+    AppleAuthentication.isAvailableAsync()
+      .then((available) => {
+        if (isMounted) setAppleAvailable(available);
+      })
+      .catch(() => {
+        if (isMounted) setAppleAvailable(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const signInWithGoogle = async () => {
     try {
-      setIsSigningIn(true);
+      setSigningInProvider("google");
       if (Platform.OS === "android") {
         await GoogleSignin.hasPlayServices();
       }
@@ -119,9 +142,68 @@ export default function Login() {
         bgColor: "red.500",
       });
     } finally {
-      setIsSigningIn(false);
+      setSigningInProvider(null);
     }
   };
+
+  const signInWithApple = async () => {
+    try {
+      if (!appleAvailable) {
+        toast.show({
+          title: "Apple Sign In Unavailable",
+          description: "Apple Sign In is not available on this device.",
+          placement: "top",
+          bgColor: "red.500",
+        });
+        return;
+      }
+      setSigningInProvider("apple");
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const idToken = credential.identityToken;
+      if (!idToken) throw new Error("No ID token received from Apple");
+
+      const { data } = (await appleAuthSignIn({
+        variables: { idToken },
+        context: { headers: { role: "client" } },
+      })) as unknown as {
+        data: {
+          appleAuthSignIn: { accessToken: string; refreshToken: string };
+        };
+      };
+
+      await saveTokens(
+        data.appleAuthSignIn.accessToken,
+        data.appleAuthSignIn.refreshToken
+      );
+      toast.show({
+        title: "Welcome to TrainZilla!",
+        placement: "top",
+        bgColor: "emerald.500",
+      });
+      router.replace("/(tabs)/home");
+    } catch (error: any) {
+      console.log("Apple Sign-In Error:", error);
+      let msg = "Something went wrong";
+      if (error?.code === "ERR_CANCELED") msg = "Sign in was cancelled";
+      toast.show({
+        title: "Sign In Failed",
+        description: msg,
+        placement: "top",
+        bgColor: "red.500",
+      });
+    } finally {
+      setSigningInProvider(null);
+    }
+  };
+
+  const anyBusy = Boolean(signingInProvider) || googleLoading || appleLoading;
+  const googleBusy = signingInProvider === "google" || googleLoading;
+  const appleBusy = signingInProvider === "apple" || appleLoading;
 
   const stats = [
     { label: "Active athletes", value: "12.4k" },
@@ -213,10 +295,19 @@ export default function Login() {
                 </Text>
               </VStack>
 
+              {Platform.OS === "ios" && (
+                <AppleButton
+                  onPress={signInWithApple}
+                  isLoading={appleBusy}
+                  disabled={anyBusy || !appleAvailable}
+                  isAvailable={appleAvailable}
+                />
+              )}
+
               <GlassButton
                 onPress={signInWithGoogle}
-                isLoading={isSigningIn || loading}
-                disabled={isSigningIn || loading}
+                isLoading={googleBusy}
+                disabled={anyBusy}
               />
 
               <VStack space={3}>
@@ -358,6 +449,49 @@ function GlassButton({
         {!isLoading && !disabled && <GoogleGIcon size={18} />}
         <Text fontSize="md" fontWeight="semibold" color="white">
           {isLoading ? "Signing in…" : "Continue with Google"}
+        </Text>
+      </HStack>
+    </Button>
+  );
+}
+
+function AppleButton({
+  onPress,
+  isLoading,
+  disabled,
+  isAvailable,
+}: {
+  onPress: () => void;
+  isLoading: boolean;
+  disabled: boolean;
+  isAvailable: boolean;
+}) {
+  const label = !isAvailable
+    ? "Apple Sign In not available"
+    : isLoading
+      ? "Signing in…"
+      : "Continue with Apple";
+
+  return (
+    <Button
+      mt={2}
+      size="lg"
+      rounded="xl"
+      bg="rgba(255,255,255,0.05)"
+      borderWidth={1}
+      borderColor="rgba(255,255,255,0.2)"
+      _pressed={{ bg: "rgba(255,255,255,0.08)" }}
+      shadow={8}
+      onPress={onPress}
+      isLoading={isLoading}
+      isDisabled={disabled}
+    >
+      <HStack alignItems="center" space={3} justifyContent="center">
+        {!isLoading && !disabled && (
+          <Icon as={FontAwesome} name="apple" size="sm" color="white" />
+        )}
+        <Text fontSize="md" fontWeight="semibold" color="white">
+          {label}
         </Text>
       </HStack>
     </Button>

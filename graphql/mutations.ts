@@ -10,6 +10,15 @@ export const GOOGLE_AUTH_SIGN_IN = gql`
   }
 `;
 
+export const APPLE_AUTH_SIGN_IN = gql`
+  mutation AppleAuthSignIn($idToken: String!) {
+    appleAuthSignIn(idToken: $idToken) {
+      accessToken
+      refreshToken
+    }
+  }
+`;
+
 export const REFRESH_ACCESS_TOKEN = gql`
   mutation RefreshAccessToken($refreshToken: String!) {
     refreshAccessToken(refreshToken: $refreshToken) {
