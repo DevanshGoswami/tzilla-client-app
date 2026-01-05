@@ -11,7 +11,6 @@ import {
   ScrollView,
   Skeleton,
   Text,
-  useDisclose,
   VStack,
 } from "native-base";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,12 +18,12 @@ import {
   KeyboardAvoidingView,
   Modal as RNModal,
   Platform,
+  Pressable as RNPressable,
   RefreshControl,
   ScrollView as RNScrollView,
   TextInput,
-  TouchableWithoutFeedback,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 
 import { GET_ME } from "@/graphql/queries";
@@ -54,6 +53,7 @@ const WORKOUT_PLANS_FOR_CLIENT = gql`
       startDate
       endDate
       updatedAt
+      days
       exercises {
         name
         avatarUrl
@@ -291,6 +291,7 @@ type GQLWorkoutPlan = {
   startDate: string;
   endDate?: string | null;
   updatedAt: string;
+  days?: Weekday[] | null;
   exercises: GQLExercise[];
   trainerId?: string | null;
 };
@@ -303,6 +304,27 @@ type UIWorkout = {
   description?: string;
   trainerName?: string;
 };
+
+type Weekday =
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
+function getWeekday(d: Date): Weekday {
+  const i = d.getDay(); // 0=Sun
+  return [
+    "SUNDAY",
+    "MONDAY",
+    "TUESDAY",
+    "WEDNESDAY",
+    "THURSDAY",
+    "FRIDAY",
+    "SATURDAY",
+  ][i] as Weekday;
+}
 
 /* ================================
    Visual bits
@@ -875,6 +897,7 @@ function WorkoutDetailModal({
   trainerName?: string | null;
 }) {
   if (!plan) return null;
+  const insets = useSafeAreaInsets();
   return (
     <RNModal
       visible={visible}
@@ -882,29 +905,40 @@ function WorkoutDetailModal({
       onRequestClose={onClose}
       transparent
     >
-      <TouchableWithoutFeedback onPress={onClose} accessible={false}>
-        <Box flex={1} bg="rgba(4,5,10,0.92)">
-          <TouchableWithoutFeedback onPress={() => {}} accessible={false}>
-            <SafeAreaView style={{ flex: 1 }}>
-              <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-                style={{ flex: 1 }}
-              >
-                <RNScrollView
-                  contentContainerStyle={{ padding: 24, paddingBottom: 96 }}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                >
-            <VStack space={4}>
-              <HStack alignItems="center" justifyContent="space-between">
-                <Pressable onPress={onClose}>
-                  <HStack space={1} alignItems="center">
-                    <Ionicons name="chevron-back" size={18} color={ACCENT} />
-                    <Text style={{ color: ACCENT, fontWeight: "600" }}>
-                      Close
-                    </Text>
-                  </HStack>
-                </Pressable>
+      <Box flex={1} bg="rgba(4,5,10,0.92)">
+        <SafeAreaView style={{ flex: 1 }}>
+          <RNPressable
+            onPress={onClose}
+            hitSlop={12}
+            style={{
+              position: "absolute",
+              top: Math.max(insets.top + 8, 16),
+              left: 16,
+              zIndex: 10,
+              elevation: 10,
+            }}
+          >
+            <HStack space={1} alignItems="center">
+              <Ionicons name="chevron-back" size={18} color={ACCENT} />
+              <Text style={{ color: ACCENT, fontWeight: "600" }}>Close</Text>
+            </HStack>
+          </RNPressable>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={{ flex: 1 }}
+          >
+            <RNScrollView
+              flex={1}
+              contentContainerStyle={{
+                padding: 24,
+                paddingTop: Math.max(insets.top + 72, 88),
+                paddingBottom: 96,
+              }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <VStack space={4}>
+              <HStack alignItems="center" justifyContent="flex-end">
                 <InfoChip icon="layers-outline" label="Plan detail" />
               </HStack>
 
@@ -929,7 +963,7 @@ function WorkoutDetailModal({
                       Total exercises
                     </Text>
                     <Text fontSize="2xl" fontWeight="bold" color="white">
-                      {plan.exercises.length}
+                      {resolvedExercises.length}
                     </Text>
                   </VStack>
                   <VStack alignItems="flex-end" space={2}>
@@ -953,28 +987,34 @@ function WorkoutDetailModal({
                 <Text fontSize="md" fontWeight="bold" color="white">
                   Exercises
                 </Text>
-                {resolvedExercises
-                  .slice()
-                  .sort((a, b) => a.order - b.order)
-                  .map((ex) => (
-                    <ExerciseRow
-                      key={`${ex.name}-${ex.order}`}
-                      name={ex.name}
-                      url={ex.url}
-                      sets={ex.sets}
-                      reps={ex.reps}
-                      restSeconds={ex.restSeconds}
-                      order={ex.order}
-                      logging={loggingOrder === ex.order}
-                      onLog={(extras) =>
-                        onLogExercise({
-                          order: ex.order,
-                          name: ex.name,
-                          ...extras,
-                        })
-                      }
-                    />
-                  ))}
+                {resolvedExercises.length ? (
+                  resolvedExercises
+                    .slice()
+                    .sort((a, b) => a.order - b.order)
+                    .map((ex) => (
+                      <ExerciseRow
+                        key={`${ex.name}-${ex.order}`}
+                        name={ex.name}
+                        url={ex.url}
+                        sets={ex.sets}
+                        reps={ex.reps}
+                        restSeconds={ex.restSeconds}
+                        order={ex.order}
+                        logging={loggingOrder === ex.order}
+                        onLog={(extras) =>
+                          onLogExercise({
+                            order: ex.order,
+                            name: ex.name,
+                            ...extras,
+                          })
+                        }
+                      />
+                    ))
+                ) : (
+                  <Text fontSize="sm" color="coolGray.300">
+                    No exercises in this plan.
+                  </Text>
+                )}
               </VStack>
 
               <GlassCard>
@@ -1000,12 +1040,10 @@ function WorkoutDetailModal({
                 </VStack>
               </GlassCard>
             </VStack>
-          </RNScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </TouchableWithoutFeedback>
-  </Box>
-</TouchableWithoutFeedback>
+            </RNScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Box>
 </RNModal>
   );
 }
@@ -1015,7 +1053,7 @@ function WorkoutDetailModal({
 ================================ */
 export default function Workouts() {
   const toast = useAppToast();
-  const { isOpen, onOpen, onClose } = useDisclose();
+  const [isPlanOpen, setIsPlanOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<GQLWorkoutPlan | null>(null);
   const [loggingOrder, setLoggingOrder] = useState<number | null>(null);
   const [selectedTrainerName, setSelectedTrainerName] = useState<string | null>(null);
@@ -1083,6 +1121,13 @@ export default function Workouts() {
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     );
   }, [plansResp]);
+  const selectedWeekday = getWeekday(currentDate);
+  const plansForDay = useMemo(() => {
+    return plansSorted.filter((plan) => {
+      const days = plan.days ?? [];
+      return days.length === 0 || days.includes(selectedWeekday);
+    });
+  }, [plansSorted, selectedWeekday]);
 
   const { data: trainersData, refetch: refetchTrainers } = useCachedQuery<{
     getTrainersForClient: {
@@ -1106,10 +1151,9 @@ export default function Workouts() {
     (async () => {
       if (tokenLoading) return;
       const mapped = await Promise.all(
-        plansSorted.map(async (plan) => {
-          const first = [...(plan.exercises ?? [])].sort(
-            (a, b) => a.order - b.order
-          )[0];
+        plansForDay.map(async (plan) => {
+          const dayExercises = [...(plan.exercises ?? [])];
+          const first = dayExercises.sort((a, b) => a.order - b.order)[0];
           const bannerUrl = await resolveS3KeyToUrl(
             first?.avatarUrl ?? undefined,
             token
@@ -1121,7 +1165,7 @@ export default function Workouts() {
           return {
             key: plan._id,
             title: plan.title,
-            exercisesCount: plan.exercises?.length ?? 0,
+            exercisesCount: dayExercises.length,
             bannerUrl,
             scheduled: plan.startDate,
             description: plan.description ?? undefined,
@@ -1134,7 +1178,7 @@ export default function Workouts() {
     return () => {
       cancelled = true;
     };
-  }, [plansSorted, token, tokenLoading, trainersById]);
+  }, [plansForDay, token, tokenLoading, trainersById]);
 
   // resolved exercises for modal (prefetch each asset)
   const [resolvedExercises, setResolvedExercises] = useState<
@@ -1147,12 +1191,17 @@ export default function Workouts() {
       order: number;
     }[]
   >([]);
+  const selectedPlanExercises = useMemo(() => {
+    if (!selectedPlan) return [];
+    return selectedPlan.exercises ?? [];
+  }, [selectedPlan]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!selectedPlan || tokenLoading) return;
       const list = await Promise.all(
-        [...(selectedPlan.exercises ?? [])]
+        [...selectedPlanExercises]
           .sort((a, b) => a.order - b.order)
           .map(async (ex) => {
             const url = await resolveS3KeyToUrl(
@@ -1175,7 +1224,7 @@ export default function Workouts() {
     return () => {
       cancelled = true;
     };
-  }, [selectedPlan, token, tokenLoading]);
+  }, [selectedPlan, selectedPlanExercises, token, tokenLoading]);
 
   // logs by date
   const {
@@ -1326,10 +1375,16 @@ export default function Workouts() {
         setSelectedTrainerName(null);
       }
       setSelectedPlan(plan);
-      onOpen();
+      setIsPlanOpen(true);
     },
-    [onOpen, trainersById]
+    [trainersById]
   );
+  const closePlan = useCallback(() => {
+    setIsPlanOpen(false);
+    setSelectedPlan(null);
+    setSelectedTrainerName(null);
+    setLoggingOrder(null);
+  }, []);
 
   const dayIsToday = isSameLocalDay(currentDate, new Date());
   const dayLabel = dayIsToday ? "Today" : prettyLocalDate(currentDate);
@@ -1414,7 +1469,7 @@ export default function Workouts() {
               </VStack>
             ) : uiWorkouts.length ? (
               uiWorkouts.map((w) => {
-                const plan = plansSorted.find((p) => p._id === w.key)!;
+                const plan = plansForDay.find((p) => p._id === w.key)!;
                 return (
                   <WorkoutCard
                     key={w.key}
@@ -1428,7 +1483,7 @@ export default function Workouts() {
                 <VStack alignItems="center" space={3}>
                   <Ionicons name="time-outline" size={32} color={ACCENT} />
                   <Text color="coolGray.200" textAlign="center">
-                    No workouts yet. Your trainer will schedule sessions soon.
+                    No workouts scheduled for {selectedWeekday.toLowerCase()}.
                   </Text>
                 </VStack>
               </GlassCard>
@@ -1627,8 +1682,8 @@ export default function Workouts() {
 
       {/* Modal */}
       <WorkoutDetailModal
-        visible={isOpen && !!selectedPlan}
-        onClose={onClose}
+        visible={isPlanOpen && !!selectedPlan}
+        onClose={closePlan}
         plan={selectedPlan}
         resolvedExercises={resolvedExercises}
         loggingOrder={loggingOrder}

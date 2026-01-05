@@ -18,7 +18,8 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "TrainZilla needs photo access so you can upload progress photos and share images in messages.",
         "NSPhotoLibraryAddUsageDescription": "TrainZilla saves progress photos you choose to keep on your device.",
-        "NSMotionUsageDescription": "TrainZilla uses motion data to track daily steps and show your activity progress."
+        "NSMotionUsageDescription": "TrainZilla uses motion data to track daily steps and show your activity progress.",
+        "NSUserTrackingUsageDescription": "Allow TrainZilla to track activity to personalize insights and improve experiences across apps and websites."
       }
     },
     "android": {

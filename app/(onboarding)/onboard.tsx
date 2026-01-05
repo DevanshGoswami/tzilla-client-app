@@ -22,6 +22,7 @@ import { StatusBar } from "expo-status-bar";
 import { GET_ME } from "@/graphql/queries";
 import {getTokens} from "@/lib/apollo";
 import { useRuntimeConfig } from "@/lib/remoteConfig";
+import { getCachedAppleProfile } from "@/lib/appleProfileCache";
 
 type Gender = "MALE" | "FEMALE" | "OTHER";
 type Goal = "LOSE_FAT" | "GAIN_MUSCLE" | "MAINTAIN";
@@ -53,6 +54,27 @@ export default function OnboardingScreen() {
             ),
         });
     }, [nav]);
+
+    useEffect(() => {
+        let mounted = true;
+        if (name.trim().length) return () => { mounted = false; };
+        (async () => {
+            try {
+                const serverName = meData?.user?.name?.trim();
+                if (serverName) {
+                    if (mounted) setName(serverName);
+                    return;
+                }
+                const cached = await getCachedAppleProfile();
+                if (mounted && cached.fullName) {
+                    setName(cached.fullName);
+                }
+            } catch (err) {
+                console.warn("Failed to prefill name:", err);
+            }
+        })();
+        return () => { mounted = false; };
+    }, [meData?.user?.name, name]);
 
     // @ts-ignore
     const userId = meData?.user?._id;

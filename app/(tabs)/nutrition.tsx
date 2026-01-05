@@ -1448,6 +1448,15 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
     [toast]
   );
 
+  const openCitation = useCallback(
+    (url: string) => {
+      Linking.openURL(url).catch(() =>
+        toast.show({ title: "Failed to open link", placement: "top" })
+      );
+    },
+    [toast]
+  );
+
   /* ── Inline Add Panel state ───────────────────────────────────────────── */
   const [addMode, setAddMode] = useState<null | {
     defaults?: Partial<SavePayload>;
@@ -1720,6 +1729,44 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
                     />
                   </HStack>
                 </VStack>
+              </VStack>
+            </GlassCard>
+
+            <GlassCard>
+              <VStack space={2}>
+                <Text fontSize="xs" color="coolGray.400">
+                  Sources
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    openCitation(
+                      "https://www.cdc.gov/bmi/adult-calculator/index.html"
+                    )
+                  }
+                >
+                  <Text
+                    fontSize="sm"
+                    color="coolGray.200"
+                    textDecorationLine="underline"
+                  >
+                    CDC — Body Mass Index (BMI)
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    openCitation(
+                      "https://www.niddk.nih.gov/health-information/weight-management/body-weight-planner"
+                    )
+                  }
+                >
+                  <Text
+                    fontSize="sm"
+                    color="coolGray.200"
+                    textDecorationLine="underline"
+                  >
+                    NIH — Daily calorie needs / TDEE
+                  </Text>
+                </Pressable>
               </VStack>
             </GlassCard>
 

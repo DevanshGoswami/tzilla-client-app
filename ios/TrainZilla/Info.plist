@@ -71,6 +71,8 @@
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
     </array>
+    <key>NSUserTrackingUsageDescription</key>
+    <string>Allow TrainZilla to track activity to personalize insights and improve experiences across apps and websites.</string>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
     <key>UIRequiredDeviceCapabilities</key>

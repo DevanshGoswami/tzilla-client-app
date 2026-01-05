@@ -28,6 +28,7 @@ import { useAppToast } from "@/providers/AppToastProvider";
 import { APPLE_AUTH_SIGN_IN, GOOGLE_AUTH_SIGN_IN } from "../../graphql/mutations";
 import { saveTokens } from "../../lib/apollo";
 import { useRuntimeConfig } from "@/lib/remoteConfig";
+import { cacheAppleProfile } from "@/lib/appleProfileCache";
 
 function GoogleGIcon({ size = 20 }: { size?: number }) {
   // Official multicolor "G" in SVG (no network needed, renders instantly)
@@ -164,6 +165,19 @@ export default function Login() {
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
       });
+      const fullName = [
+        credential.fullName?.givenName,
+        credential.fullName?.familyName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+      if (fullName || credential.email) {
+        await cacheAppleProfile({
+          fullName: fullName || undefined,
+          email: credential.email ?? undefined,
+        });
+      }
       const idToken = credential.identityToken;
       if (!idToken) throw new Error("No ID token received from Apple");
 

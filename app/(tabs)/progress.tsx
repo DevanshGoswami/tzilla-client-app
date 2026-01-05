@@ -13,6 +13,7 @@ import {
 } from "native-base";
 import {
   KeyboardAvoidingView,
+  Linking,
   Modal as RNModal,
   Platform,
   Pressable,
@@ -575,6 +576,9 @@ function ProgressContent({ userId }: { userId: string }) {
 
   const lastFocusRef = useRef(0);
   const [refreshing, setRefreshing] = useState(false);
+  const openCitation = useCallback((url: string) => {
+    Linking.openURL(url).catch(() => {});
+  }, []);
   useFocusEffect(
     useCallback(() => {
       if (!userId) return;
@@ -759,6 +763,44 @@ function ProgressContent({ userId }: { userId: string }) {
                 icon="pulse-outline"
               />
             </HStack>
+
+            <GlassCard>
+              <VStack space={2}>
+                <Text fontSize="xs" color="coolGray.400">
+                  Sources
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    openCitation(
+                      "https://www.cdc.gov/bmi/adult-calculator/index.html"
+                    )
+                  }
+                >
+                  <Text
+                    fontSize="sm"
+                    color="coolGray.200"
+                    textDecorationLine="underline"
+                  >
+                    CDC — Body Mass Index (BMI)
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    openCitation(
+                      "https://www.niddk.nih.gov/health-information/weight-management/body-weight-planner"
+                    )
+                  }
+                >
+                  <Text
+                    fontSize="sm"
+                    color="coolGray.200"
+                    textDecorationLine="underline"
+                  >
+                    NIH — Daily calorie needs / TDEE
+                  </Text>
+                </Pressable>
+              </VStack>
+            </GlassCard>
 
             <GlassCard gradient>
               <HStack justifyContent="space-between" alignItems="center" mb={4}>
