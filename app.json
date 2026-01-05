@@ -2,7 +2,7 @@
   "expo": {
     "name": "TrainZilla",
     "slug": "trainzilla-client",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "trainzillaclient",
@@ -13,7 +13,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.devops.tzilla.trainzillaclient",
       "googleServicesFile": "./GoogleService-Info.plist",
-      "buildNumber": "4",
+      "buildNumber": "5",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "TrainZilla needs photo access so you can upload progress photos and share images in messages.",
@@ -23,7 +23,7 @@
       }
     },
     "android": {
-      "versionCode": 4,
+      "versionCode": 5,
       "icon": "./assets/icons/android/res/mipmap-xxxhdpi/ic_launcher.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icons/android/res/mipmap-xxxhdpi/ic_launcher_foreground.png",
