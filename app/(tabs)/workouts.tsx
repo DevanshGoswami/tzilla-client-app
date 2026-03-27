@@ -1,4 +1,5 @@
 import { gql } from "@apollo/client";
+import { Linking } from 'react-native';
 import { useMutation } from "@apollo/client/react";
 import { useCachedQuery } from "@/hooks/useCachedQuery";
 import {
@@ -718,6 +719,7 @@ function LoggedWorkoutCard({
 function ExerciseRow({
   name,
   url,
+  videoUrl,
   sets,
   reps,
   restSeconds,
@@ -727,6 +729,7 @@ function ExerciseRow({
 }: {
   name: string;
   url?: string;
+  videoUrl?: string;
   sets: number;
   reps: number;
   restSeconds: number;
@@ -736,20 +739,29 @@ function ExerciseRow({
     rpe?: number;
     durationSeconds?: number;
     notes?: string;
+    weightKg?: number;
   }) => void;
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [rpe, setRpe] = useState<string>("7");
   const [dur, setDur] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+  const [weight, setWeight] = useState<string>(""); 
 
   const handleSubmit = useCallback(() => {
     onLog({
       rpe: Number.isFinite(Number(rpe)) ? Number(rpe) : undefined,
       durationSeconds: Number.isFinite(Number(dur)) ? Number(dur) : undefined,
       notes: notes?.trim() || undefined,
+      weightKg: Number.isFinite(Number(weight)) ? Number(weight) : undefined,
     });
-  }, [onLog, rpe, dur, notes]);
+  }, [onLog, rpe, dur, notes, weight]);
+
+  const openVideo = useCallback(() => {
+    if (videoUrl) {
+    Linking.openURL(videoUrl).catch(err => console.warn('Failed to open URL:', err));
+    }
+  }, [videoUrl]);
 
   return (
     <GlassCard p={0} mb={3}>
@@ -785,12 +797,53 @@ function ExerciseRow({
           </Text>
         </HStack>
 
+          {/* Video URL section */}
+        {videoUrl ? (
+          <Pressable 
+            onPress={openVideo}
+            style={({ pressed }) => ({
+              padding: 8,
+              borderRadius: 8,
+              backgroundColor: pressed ? 'rgba(124,58,237,0.3)' : 'rgba(124,58,237,0.15)',
+              borderWidth: 1,
+              borderColor: BORDER_COLOR,
+              alignSelf: 'flex-start',
+            })}
+          >
+            <HStack space={2} alignItems="center">
+              <Ionicons name="play-circle-outline" size={16} color={ACCENT} />
+              <Text fontSize="sm" color={ACCENT}>
+                Watch Tutorial Video
+              </Text>
+            </HStack>
+          </Pressable>
+        ) : (
+          <Text fontSize="sm" color="coolGray.400">
+            No tutorial video available
+          </Text>
+        )}
+
+
         <Text fontSize="sm" color="coolGray.200">
           {sets} sets × {reps} reps
         </Text>
 
         {/* Quick inputs */}
-        <HStack space={3}>
+
+         <HStack space={3}>
+          <FormControl flex={1}>
+            <FormControl.Label _text={{ color: "coolGray.300" }}>
+              Weight (kg)
+            </FormControl.Label>
+            <TextInput
+              style={TEXT_INPUT_STYLE}
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
+              placeholder="e.g., 50"
+              placeholderTextColor={INPUT_PLACEHOLDER}
+            />
+          </FormControl>
           <FormControl flex={1}>
             <FormControl.Label _text={{ color: "coolGray.300" }}>
               RPE
@@ -804,6 +857,8 @@ function ExerciseRow({
               placeholderTextColor={INPUT_PLACEHOLDER}
             />
           </FormControl>
+        </HStack>
+        <HStack space={3}>
           <FormControl flex={1}>
             <FormControl.Label _text={{ color: "coolGray.300" }}>
               Duration (s)
@@ -996,6 +1051,7 @@ function WorkoutDetailModal({
                         key={`${ex.name}-${ex.order}`}
                         name={ex.name}
                         url={ex.url}
+                        videoUrl={ex.videoUrl}
                         sets={ex.sets}
                         reps={ex.reps}
                         restSeconds={ex.restSeconds}
@@ -1212,6 +1268,7 @@ export default function Workouts() {
             return {
               name: ex.name,
               url,
+              videoUrl: ex.videoUrl ?? undefined,
               sets: ex.sets,
               reps: ex.reps,
               restSeconds: ex.restSeconds,
