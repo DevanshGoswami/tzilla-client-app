@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
-import { Avatar, Badge, Button } from "native-base";
+import {
+    View,
+    Text,
+    ScrollView,
+    TouchableOpacity,
+    StyleSheet,
+    ActivityIndicator,
+    TextInput,
+} from "react-native";
+import { Avatar, Button } from "native-base";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@apollo/client/react";
@@ -20,14 +28,25 @@ const TEXT_PRIMARY = "#F6F4FF";
 const TEXT_MUTED = "rgba(247,244,255,0.75)";
 const ACCENT = "#A855F7";
 
+interface TraineeResponse {
+  trainersWithPlans: TrainerWithPlans[];
+}
+
 export default function ViewAllTrainers() {
     const [pageNumber, setPageNumber] = useState(1);
     const [token, setToken] = useState<string | null>(null);
     const [photoMap, setPhotoMap] = useState<Record<string, string>>({});
+    const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+    const [isSearching, setIsSearching] = useState(false);
     const { setSelected } = useSelectedTrainerStore();
 
-    const { data, loading, error, fetchMore, refetch } = useQuery(TRAINERS_WITH_PLANS, {
-        variables: { pageNumber: 1, pageSize: PAGE_SIZE },
+    const { data, loading, error, fetchMore, refetch } = useQuery<TraineeResponse>(TRAINERS_WITH_PLANS, {
+        variables: { 
+            pageNumber: 1, 
+            pageSize: PAGE_SIZE,
+            searchTerm: debouncedSearchTerm.trim() || undefined
+        },
         fetchPolicy: "no-cache",
         nextFetchPolicy: "no-cache",
         notifyOnNetworkStatusChange: true,
@@ -35,6 +54,33 @@ export default function ViewAllTrainers() {
 
     const trainers: TrainerWithPlans[] = data?.trainersWithPlans ?? [];
 
+    // Track search state properly
+    useEffect(() => {
+        if (debouncedSearchTerm.trim()) {
+            setIsSearching(true);
+        } else {
+            setIsSearching(false);
+        }
+    }, [debouncedSearchTerm]);
+
+    // Clear search state when data loads
+    useEffect(() => {
+        if (data && !loading) {
+            setIsSearching(false);
+        }
+    }, [data, loading]);
+
+    // Debounce search input
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearchTerm(searchTerm);
+            setPageNumber(1); // Reset to first page when search changes
+        }, 300);
+
+        return () => clearTimeout(handler);
+    }, [searchTerm]);
+
+    // Sync auth token
     useEffect(() => {
         let cancelled = false;
         const syncToken = async () => {
@@ -54,6 +100,7 @@ export default function ViewAllTrainers() {
         };
     }, []);
 
+    // Handle S3 image URLs
     const pendingPhotoKeys = useMemo(() => {
         const keys = new Set<string>();
         trainers.forEach((twp) => {
@@ -82,10 +129,13 @@ export default function ViewAllTrainers() {
     }, [token, pendingPhotoKeys]);
 
     const handleLoadMore = () => {
-        // naïve pagination – adjust if backend returns "hasNext" later
         const nextPage = pageNumber + 1;
         fetchMore({
-            variables: { pageNumber: nextPage, pageSize: PAGE_SIZE },
+            variables: { 
+                pageNumber: nextPage, 
+                pageSize: PAGE_SIZE,
+                searchTerm: debouncedSearchTerm.trim() || undefined
+            },
             updateQuery: (prev, { fetchMoreResult }) => {
                 if (!fetchMoreResult) return prev;
                 return {
@@ -116,9 +166,10 @@ export default function ViewAllTrainers() {
         return photoMap[value];
     };
 
-    const isInitialLoading = loading && !data;
+    const isInitialLoading = loading && !data && !debouncedSearchTerm.trim();
+    const showLoadMore = !debouncedSearchTerm.trim() && trainers.length >= PAGE_SIZE && !loading;
 
-    if (error) {
+    if (error && !debouncedSearchTerm.trim()) {
         return (
             <SafeAreaView style={styles.safeArea}>
                 <View style={[styles.center, { paddingHorizontal: 32 }]}>
@@ -164,6 +215,26 @@ export default function ViewAllTrainers() {
                             Browse top-tier pros, preview specialties, and send invitations in seconds.
                         </Text>
                     </LinearGradient>
+
+                    {/* 🔎 SEARCH BAR */}
+                    <View style={styles.searchContainer}>
+                        <Ionicons name="search" size={20} color="#aaa" style={{ marginRight: 8 }} />
+                        <TextInput
+                            placeholder="Search coaches by name, location, or specialty"
+                            placeholderTextColor="#aaa"
+                            value={searchTerm}
+                            onChangeText={setSearchTerm}
+                            style={styles.searchInput}
+                        />
+                    </View>
+
+                    {/* Show loading indicator during search */}
+                    {isSearching && (
+                        <View style={styles.searchLoading}>
+                            <ActivityIndicator color="#A855F7" size="small" />
+                            <Text style={styles.searchLoadingText}>Searching...</Text>
+                        </View>
+                    )}
 
                     <View style={styles.list}>
                         {trainers.map((twp) => {
@@ -221,7 +292,12 @@ export default function ViewAllTrainers() {
                         })}
                     </View>
 
-                    {trainers.length >= PAGE_SIZE && (
+                    {trainers.length === 0 && debouncedSearchTerm.trim() && !isSearching && (
+                        <Text style={styles.noResults}>No trainers found matching "{debouncedSearchTerm}"</Text>
+                    )}
+
+                    {/* Show Load More button when not searching and there are more results */}
+                    {showLoadMore && (
                         <TouchableOpacity style={styles.loadButton} onPress={handleLoadMore} disabled={loading}>
                             {loading ? (
                                 <ActivityIndicator color="#05030D" />
@@ -284,22 +360,29 @@ const styles = StyleSheet.create({
         marginTop: 8,
         lineHeight: 20,
     },
-    heroStats: {
+    searchContainer: {
         flexDirection: "row",
-        justifyContent: "space-between",
-        marginTop: 18,
+        alignItems: "center",
+        backgroundColor: "#1a1826",
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        marginBottom: 20,
     },
-    heroStatValue: {
-        color: TEXT_PRIMARY,
-        fontSize: 20,
-        fontWeight: "700",
+    searchInput: {
+        flex: 1,
+        fontSize: 16,
+        color: "#fff",
     },
-    heroStatLabel: {
+    searchLoading: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        marginVertical: 10,
+    },
+    searchLoadingText: {
         color: TEXT_MUTED,
-        fontSize: 11,
-        marginTop: 4,
-        textTransform: "uppercase",
-        letterSpacing: 0.8,
+        marginLeft: 8,
     },
     list: {
         gap: 14,
@@ -364,5 +447,11 @@ const styles = StyleSheet.create({
     errorText: {
         color: TEXT_MUTED,
         textAlign: "center",
+    },
+    noResults: {
+        color: TEXT_MUTED,
+        textAlign: "center",
+        marginTop: 20,
+        fontStyle: "italic",
     },
 });
