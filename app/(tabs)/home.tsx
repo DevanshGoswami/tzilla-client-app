@@ -491,7 +491,7 @@ function ExploreSpotlight() {
                     • Preview client transformations and trainer response times
                 </Text>
             </VStack>
-            <Button rounded="xl" bg="#7C3AED" _text={{ fontWeight: "bold" }} onPress={() => router.push("/(trainers)/view-all")}>Discover coaches</Button>
+            <Button rounded="xl" bg="#7C3AED" _text={{ fontWeight: "bold" }} onPress={() => router.push("/(trainers)/view-all")}>View coaches</Button>
         </Box>
     );
 }

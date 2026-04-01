@@ -97,7 +97,7 @@ export default function TabsLayout() {
                             }}
                         />
                         <Text style={{ color: "#A5B0C9", fontSize: 10, marginLeft: 8 }}>
-                            TRAIN · FUEL · GROW
+                            TRAINZILLA FOR CLIENT
                         </Text>
                     </View>
                 ),

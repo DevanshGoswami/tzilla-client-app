@@ -24,7 +24,10 @@ import { GET_ME, ACTIVE_CLIENT_SUBSCRIPTIONS_V2 } from "@/graphql/queries";
 import { REQUEST_INVITATION } from "@/graphql/mutations";
 import { Alert } from "react-native";
 import { getTokens, onTokensChanged } from "@/lib/apollo";
-import { resolveS3KeyToUrl, isFullUrl } from "@/lib/media";
+import { resolveS3KeyToUrl, isFullUrl } from "@/lib/media"
+import { CREATE_SUBSCRIPTION } from "@/graphql/mutations";
+import RazorpayCheckout from "react-native-razorpay";
+import { getRuntimeConfigValue } from "@/lib/remoteConfig";;
 
 const SCREEN_BG = "#05030D";
 const CARD_BG = "rgba(15,13,25,0.95)";
@@ -46,6 +49,8 @@ export default function TrainerProfileScreen() {
     const [previewCursor, setPreviewCursor] = useState(0);
     const previewListRef = useRef<FlatList<string>>(null);
     const previewWindowWidth = Dimensions.get("window").width;
+    const [createSubscription, { loading: creatingSub }] = useMutation(CREATE_SUBSCRIPTION);
+
 
     const { data: meData, loading: meLoading } = useQuery(GET_ME);
     // @ts-ignore
@@ -216,6 +221,35 @@ export default function TrainerProfileScreen() {
         setPreviewCursor(0);
     }, []);
 
+    const subscribeToPlan = async (plan: any) => {
+        if (!clientId) return;
+        try {
+          const { data } = await createSubscription({
+            variables: { input: { planId: plan._id, trainerId: t.userId } },
+          });
+          const sub = data?.createSubscription;
+          if (!sub?.rzpSubscriptionId) {
+            Alert.alert("Error", "Unable to create subscription.");
+            return;
+          }
+          const key = getRuntimeConfigValue("razorpayKeyId");
+          const options: any = {
+            key,
+            name: "TrainZilla",
+            description: plan.description || plan.name,
+            subscription_id: sub.rzpSubscriptionId,
+            prefill: { name: user?.name || "", email: clientEmail || "" },
+            notes: { trainerId: t.userId, planId: plan._id, clientId, app: "trainzilla" },
+            theme: { color: "#111111" },
+          };
+          await RazorpayCheckout.open(options);
+          Alert.alert("Success", "Subscription activated!");
+        } catch (err: any) {
+          console.log("Razorpay error", err?.description || err);
+          Alert.alert("Payment failed", "Please try again.");
+        }
+      };
+
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.screen}>
@@ -352,51 +386,72 @@ export default function TrainerProfileScreen() {
                     </View>
                 ) : null}
 
-                {plans?.length ? (
-                    <View style={styles.sectionCard}>
-                        <Text style={styles.sectionTitle}>Subscription plans</Text>
-                        <View style={styles.planList}>
-                            {plans.map((plan) => (
-                                <LinearGradient
-                                    key={plan._id}
-                                    colors={["rgba(124,58,237,0.25)", "rgba(31,16,44,0.85)"]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                    style={styles.planCard}
-                                >
-                                    <View style={styles.planHeader}>
-                                        <Text style={styles.planName}>{plan.name}</Text>
-                                        <Text style={styles.planPrice}>
-                                            ₹{(plan.amount / 100).toFixed(2)} · {plan.interval}x{" "}
-                                            {plan.period.toLowerCase()}
-                                        </Text>
-                                    </View>
-                                    {plan.description ? (
-                                        <Text style={styles.planDescription}>{plan.description}</Text>
-                                    ) : null}
-                                    {(plan.meta?.freeTrialSessions || plan.meta?.sessionsIncludedPerMonth) && (
-                                        <View style={styles.planMetaRow}>
-                                            {plan.meta?.freeTrialSessions ? (
-                                                <View style={styles.metaChip}>
-                                                    <Text style={styles.metaChipText}>
-                                                        {plan.meta.freeTrialSessions} trial sessions
-                                                    </Text>
-                                                </View>
-                                            ) : null}
-                                            {plan.meta?.sessionsIncludedPerMonth ? (
-                                                <View style={styles.metaChip}>
-                                                    <Text style={styles.metaChipText}>
-                                                        {plan.meta.sessionsIncludedPerMonth}/month included
-                                                    </Text>
-                                                </View>
-                                            ) : null}
-                                        </View>
-                                    )}
-                                </LinearGradient>
-                            ))}
-                        </View>
+               {plans?.length ? (
+    <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Subscription plans</Text>
+        <View style={styles.planList}>
+            {plans.map((plan) => (
+                <LinearGradient
+                    key={plan._id}
+                    colors={["rgba(124,58,237,0.25)", "rgba(31,16,44,0.85)"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.planCard}
+                >
+                    <View style={styles.planHeader}>
+                        <Text style={styles.planName}>{plan.name}</Text>
+                        <Text style={styles.planPrice}>
+                            ₹{(plan.amount / 100).toFixed(2)} · {plan.interval}x{" "}
+                            {plan.period.toLowerCase()}
+                        </Text>
                     </View>
-                ) : null}
+                    {plan.description ? (
+                        <Text style={styles.planDescription}>{plan.description}</Text>
+                    ) : null}
+                    {(plan.meta?.freeTrialSessions || plan.meta?.sessionsIncludedPerMonth) && (
+                        <View style={styles.planMetaRow}>
+                            {plan.meta?.freeTrialSessions ? (
+                                <View style={styles.metaChip}>
+                                    <Text style={styles.metaChipText}>
+                                        {plan.meta.freeTrialSessions} trial sessions
+                                    </Text>
+                                </View>
+                            ) : null}
+                            {plan.meta?.sessionsIncludedPerMonth ? (
+                                <View style={styles.metaChip}>
+                                    <Text style={styles.metaChipText}>
+                                        {plan.meta.sessionsIncludedPerMonth}/month included
+                                    </Text>
+                                </View>
+                            ) : null}
+                        </View>
+                    )}
+
+                    {/* Subscribe button — inside the map, only if connected & not subscribed */}
+                    {alreadyConnected && !hasActiveSubscription ? (
+                        <TouchableOpacity
+                            onPress={() => subscribeToPlan(plan)}
+                            disabled={creatingSub}
+                            style={[
+                                styles.primaryButton,
+                                { marginTop: 12 },
+                                creatingSub && styles.primaryButtonDisabled,
+                            ]}
+                        >
+                            {creatingSub ? (
+                                <ActivityIndicator color="#05030D" />
+                            ) : (
+                                <Text style={styles.primaryButtonText}>
+                                    Subscribe · ₹{(plan.amount / 100).toFixed(2)}
+                                </Text>
+                            )}
+                        </TouchableOpacity>
+                    ) : null}
+                </LinearGradient>
+            ))}
+        </View>
+    </View>
+) : null}
 
                 {galleryImages.length ? (
                     <View style={styles.sectionCard}>
