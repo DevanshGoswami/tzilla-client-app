@@ -1732,88 +1732,6 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
               </VStack>
             </GlassCard>
 
-            <GlassCard>
-              <VStack space={2}>
-                <Text fontSize="xs" color="coolGray.400">
-                  Sources
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    openCitation(
-                      "https://www.cdc.gov/bmi/adult-calculator/index.html"
-                    )
-                  }
-                >
-                  <Text
-                    fontSize="sm"
-                    color="coolGray.200"
-                    textDecorationLine="underline"
-                  >
-                    CDC — Body Mass Index (BMI)
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() =>
-                    openCitation(
-                      "https://www.niddk.nih.gov/health-information/weight-management/body-weight-planner"
-                    )
-                  }
-                >
-                  <Text
-                    fontSize="sm"
-                    color="coolGray.200"
-                    textDecorationLine="underline"
-                  >
-                    NIH — Daily calorie needs / TDEE
-                  </Text>
-                </Pressable>
-              </VStack>
-            </GlassCard>
-
-            <VStack space={3}>
-              <SectionHeading icon="restaurant-outline" title="Planned meals" />
-              {loading ? (
-                <VStack space={3}>
-                  {[...Array(3)].map((_, i) => (
-                    <GlassCard key={i}>
-                      <Skeleton
-                        h="5"
-                        rounded="md"
-                        startColor="gray.700"
-                        mb={2}
-                      />
-                      <Skeleton h="4" rounded="md" startColor="gray.700" />
-                    </GlassCard>
-                  ))}
-                </VStack>
-              ) : slots.length ? (
-                slots.map((slot) => (
-                  <VStack key={slot.id} space={3}>
-                    {slot.options.map((m) => {
-                      const alreadyLogged = loggedMap.has(
-                        `${m.planId}:${m.order}`
-                      );
-                      return (
-                        <MealCard
-                          key={`${m.planId}:${m.order}`}
-                          meal={m}
-                          alreadyLogged={alreadyLogged}
-                          onLogPlanned={handleLogPlanned}
-                          onOpenRecipe={openRecipe}
-                        />
-                      );
-                    })}
-                  </VStack>
-                ))
-              ) : (
-                <GlassCard>
-                  <Text color="coolGray.200">
-                    No meals scheduled for {todayWeekday.toLowerCase()}.
-                  </Text>
-                </GlassCard>
-              )}
-            </VStack>
-
             <VStack space={3}>
               <SectionHeading
                 icon="calendar-outline"
@@ -1983,6 +1901,90 @@ function NutritionContent({ clientId, refetchMe }: NutritionContentProps) {
                 />
               )}
             </VStack>
+
+            <GlassCard>
+              <VStack space={2}>
+                <Text fontSize="xs" color="coolGray.400">
+                  Sources
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    openCitation(
+                      "https://www.cdc.gov/bmi/adult-calculator/index.html"
+                    )
+                  }
+                >
+                  <Text
+                    fontSize="sm"
+                    color="coolGray.200"
+                    textDecorationLine="underline"
+                  >
+                    CDC — Body Mass Index (BMI)
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    openCitation(
+                      "https://www.niddk.nih.gov/health-information/weight-management/body-weight-planner"
+                    )
+                  }
+                >
+                  <Text
+                    fontSize="sm"
+                    color="coolGray.200"
+                    textDecorationLine="underline"
+                  >
+                    NIH — Daily calorie needs / TDEE
+                  </Text>
+                </Pressable>
+              </VStack>
+            </GlassCard>
+
+            <VStack space={3}>
+              <SectionHeading icon="restaurant-outline" title="Planned meals" />
+              {loading ? (
+                <VStack space={3}>
+                  {[...Array(3)].map((_, i) => (
+                    <GlassCard key={i}>
+                      <Skeleton
+                        h="5"
+                        rounded="md"
+                        startColor="gray.700"
+                        mb={2}
+                      />
+                      <Skeleton h="4" rounded="md" startColor="gray.700" />
+                    </GlassCard>
+                  ))}
+                </VStack>
+              ) : slots.length ? (
+                slots.map((slot) => (
+                  <VStack key={slot.id} space={3}>
+                    {slot.options.map((m) => {
+                      const alreadyLogged = loggedMap.has(
+                        `${m.planId}:${m.order}`
+                      );
+                      return (
+                        <MealCard
+                          key={`${m.planId}:${m.order}`}
+                          meal={m}
+                          alreadyLogged={alreadyLogged}
+                          onLogPlanned={handleLogPlanned}
+                          onOpenRecipe={openRecipe}
+                        />
+                      );
+                    })}
+                  </VStack>
+                ))
+              ) : (
+                <GlassCard>
+                  <Text color="coolGray.200">
+                    No meals scheduled for {todayWeekday.toLowerCase()}.
+                  </Text>
+                </GlassCard>
+              )}
+            </VStack>
+
+            
 
             <VStack space={3}>
               <SectionHeading

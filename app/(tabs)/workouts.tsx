@@ -122,6 +122,12 @@ const ADD_WORKOUT_LOG = gql`
       name
       videoUrl
       avatarUrl
+      sets {  
+        set
+        reps
+        weightKg
+        restSeconds
+      }
       totalSets
       repsPerSet
       restSeconds
@@ -739,27 +745,56 @@ function ExerciseRow({
     rpe?: number;
     durationSeconds?: number;
     notes?: string;
-    weightKg?: number;
+    setsOverride?: {
+      set: number;
+      reps: number;
+      weightKg?: number;
+      restSeconds?: number;
+    }[];
   }) => void;
 }) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [rpe, setRpe] = useState<string>("7");
   const [dur, setDur] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
-  const [weight, setWeight] = useState<string>(""); 
+  const [setWeights, setSetWeights] = useState<Array<{weight: string; reps: string}>>([]);
+
+  // Initialize set weights when component mounts or sets change
+  useEffect(() => {
+    setSetWeights(Array.from({ length: sets }, (_, i) => ({ 
+      weight: "", 
+      reps: reps.toString() // Default to exercise reps
+    })));
+  }, [sets, reps]);
+
+  const handleSetWeightChange = (index: number, field: 'weight' | 'reps', value: string) => {
+    setSetWeights(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
 
   const handleSubmit = useCallback(() => {
+    // Prepare sets data with individual weights
+    const setsData = setWeights.map((setWeight, index) => ({
+      set: index + 1,
+      reps: Number.isFinite(Number(setWeight.reps)) ? Number(setWeight.reps) : reps,
+      weightKg: Number.isFinite(Number(setWeight.weight)) ? Number(setWeight.weight) : undefined,
+      restSeconds: restSeconds
+    }));
+
     onLog({
       rpe: Number.isFinite(Number(rpe)) ? Number(rpe) : undefined,
       durationSeconds: Number.isFinite(Number(dur)) ? Number(dur) : undefined,
       notes: notes?.trim() || undefined,
-      weightKg: Number.isFinite(Number(weight)) ? Number(weight) : undefined,
+      setsOverride: setsData // Pass the sets data with weights
     });
-  }, [onLog, rpe, dur, notes, weight]);
+  }, [onLog, rpe, dur, notes, setWeights, reps, restSeconds]); // Fixed dependencies
 
   const openVideo = useCallback(() => {
     if (videoUrl) {
-    Linking.openURL(videoUrl).catch(err => console.warn('Failed to open URL:', err));
+      Linking.openURL(videoUrl).catch(err => console.warn('Failed to open URL:', err));
     }
   }, [videoUrl]);
 
@@ -825,25 +860,60 @@ function ExerciseRow({
 
 
         <Text fontSize="sm" color="coolGray.200">
-          {sets} sets × {reps} reps
+          {sets} sets × {reps} reps (default)
         </Text>
 
-        {/* Quick inputs */}
+        {/* Dynamic Sets Input */}
+        <VStack space={3}>
+          <Text fontSize="sm" fontWeight="semibold" color="white">
+            Set Details
+          </Text>
+          {setWeights.map((setWeight, index) => (
+            <HStack key={index} space={2} alignItems="center">
+              <Box 
+                width={8} 
+                height={8} 
+                borderRadius="full" 
+                bg="rgba(124,58,237,0.2)"
+                alignItems="center"
+                justifyContent="center"
+              >
+                <Text color="white" fontSize="sm" fontWeight="bold">
+                  {index + 1}
+                </Text>
+              </Box>
+              <FormControl flex={1}>
+                <FormControl.Label _text={{ color: "coolGray.300", fontSize: "xs" }}>
+                  Reps
+                </FormControl.Label>
+                <TextInput
+                  style={TEXT_INPUT_STYLE}
+                  value={setWeight.reps}
+                  onChangeText={(value) => handleSetWeightChange(index, 'reps', value)}
+                  keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
+                  placeholder={reps.toString()}
+                  placeholderTextColor={INPUT_PLACEHOLDER}
+                />
+              </FormControl>
+              <FormControl flex={1}>
+                <FormControl.Label _text={{ color: "coolGray.300", fontSize: "xs" }}>
+                  Weight (kg)
+                </FormControl.Label>
+                <TextInput
+                  style={TEXT_INPUT_STYLE}
+                  value={setWeight.weight}
+                  onChangeText={(value) => handleSetWeightChange(index, 'weight', value)}
+                  keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
+                  placeholder="e.g., 50"
+                  placeholderTextColor={INPUT_PLACEHOLDER}
+                />
+              </FormControl>
+            </HStack>
+          ))}
+        </VStack>
 
-         <HStack space={3}>
-          <FormControl flex={1}>
-            <FormControl.Label _text={{ color: "coolGray.300" }}>
-              Weight (kg)
-            </FormControl.Label>
-            <TextInput
-              style={TEXT_INPUT_STYLE}
-              value={weight}
-              onChangeText={setWeight}
-              keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
-              placeholder="e.g., 50"
-              placeholderTextColor={INPUT_PLACEHOLDER}
-            />
-          </FormControl>
+        {/* Other Quick inputs */}
+        <HStack space={3}>
           <FormControl flex={1}>
             <FormControl.Label _text={{ color: "coolGray.300" }}>
               RPE
@@ -942,12 +1012,18 @@ function WorkoutDetailModal({
     order: number;
   }[];
   onLogExercise: (p: {
-    order: number;
-    name: string;
-    rpe?: number;
-    durationSeconds?: number;
-    notes?: string;
-  }) => void;
+  order: number;
+  name: string;
+  rpe?: number;
+  durationSeconds?: number;
+  notes?: string;
+  setsOverride?: {
+    set: number;
+    reps: number;
+    weightKg?: number;
+    restSeconds?: number;
+  }[];
+}) => void;
   loggingOrder?: number | null;
   trainerName?: string | null;
 }) {
@@ -1499,55 +1575,7 @@ export default function Workouts() {
             </GlassCard>
           )}
 
-          {/* Plans */}
-          <VStack space={3}>
-            <SectionHeading icon="flash-outline" title="Assigned plans" />
-            <Text fontSize="xs" color="coolGray.400">
-              Launch any plan to review exercises and log progress. Plans are
-              categorized by muscle group or goal, not by calendar dates.
-            </Text>
-            {plansLoading || tokenLoading ? (
-              <VStack space={3}>
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <GlassCard key={i} p={0}>
-                    <Skeleton
-                      h={40}
-                      w="100%"
-                      rounded="2xl"
-                      startColor="gray.700"
-                      endColor="gray.600"
-                    />
-                    <VStack p={4} space={3}>
-                      <Skeleton h="4" />
-                      <Skeleton h="4" w="40%" />
-                    </VStack>
-                  </GlassCard>
-                ))}
-              </VStack>
-            ) : uiWorkouts.length ? (
-              uiWorkouts.map((w) => {
-                const plan = plansForDay.find((p) => p._id === w.key)!;
-                return (
-                  <WorkoutCard
-                    key={w.key}
-                    item={w}
-                    onOpen={() => openPlan(plan)}
-                  />
-                );
-              })
-            ) : (
-              <GlassCard>
-                <VStack alignItems="center" space={3}>
-                  <Ionicons name="time-outline" size={32} color={ACCENT} />
-                  <Text color="coolGray.200" textAlign="center">
-                    No workouts scheduled for {selectedWeekday.toLowerCase()}.
-                  </Text>
-                </VStack>
-              </GlassCard>
-            )}
-          </VStack>
-
-          {/* Day selector */}
+           {/* Day selector */}
           <VStack space={3}>
             <SectionHeading
               icon="calendar-outline"
@@ -1687,6 +1715,57 @@ export default function Workouts() {
             </GlassCard>
           </VStack>
 
+
+          {/* Plans */}
+          <VStack space={3}>
+            <SectionHeading icon="flash-outline" title="Assigned plans" />
+            <Text fontSize="xs" color="coolGray.400">
+              Launch any plan to review exercises and log progress. Plans are
+              categorized by muscle group or goal, not by calendar dates.
+            </Text>
+            {plansLoading || tokenLoading ? (
+              <VStack space={3}>
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <GlassCard key={i} p={0}>
+                    <Skeleton
+                      h={40}
+                      w="100%"
+                      rounded="2xl"
+                      startColor="gray.700"
+                      endColor="gray.600"
+                    />
+                    <VStack p={4} space={3}>
+                      <Skeleton h="4" />
+                      <Skeleton h="4" w="40%" />
+                    </VStack>
+                  </GlassCard>
+                ))}
+              </VStack>
+            ) : uiWorkouts.length ? (
+              uiWorkouts.map((w) => {
+                const plan = plansForDay.find((p) => p._id === w.key)!;
+                return (
+                  <WorkoutCard
+                    key={w.key}
+                    item={w}
+                    onOpen={() => openPlan(plan)}
+                  />
+                );
+              })
+            ) : (
+              <GlassCard>
+                <VStack alignItems="center" space={3}>
+                  <Ionicons name="time-outline" size={32} color={ACCENT} />
+                  <Text color="coolGray.200" textAlign="center">
+                    No workouts scheduled for {selectedWeekday.toLowerCase()}.
+                  </Text>
+                </VStack>
+              </GlassCard>
+            )}
+          </VStack>
+
+         
+
           {/* Logs */}
           <VStack space={3}>
             <SectionHeading
@@ -1755,6 +1834,7 @@ export default function Workouts() {
               rpe: p.rpe,
               durationSeconds: p.durationSeconds,
               notes: p.notes,
+              setsOverride: p.setsOverride
             },
           });
         }}
